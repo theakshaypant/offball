@@ -22,12 +22,60 @@ There's also a player card. It scores you across five attributes — Pace, Physi
 
 ## Getting your Strava data
 
-Strava lets you export everything. It takes a few minutes and arrives by email.
+### First time
+
+Export your full history from Strava — this avoids hammering the API for potentially hundreds of sessions.
 
 1. Go to **Settings → My Account → Download or Delete Your Account**
-2. Hit **Request Your Archive**
-3. Download and unzip — the `activities/` folder inside has all your GPX files
-4. Copy the `.gpx` files into `data/`
+2. Hit **Request Your Archive** — it arrives by email, usually within a few minutes
+3. Unzip it, find the `activities/` folder, and copy the `.gpx` files into `data/`
+
+Then do your first full run:
+
+```bash
+python analyze.py
+```
+
+### Keeping it up to date
+
+After the initial setup, `fetch_activities.py` checks which sessions you don't have locally and downloads just the new ones via the Strava API.
+
+**One-time API setup:**
+
+1. Create a Strava API app at [strava.com/settings/api](https://www.strava.com/settings/api). Set the authorisation callback domain to `localhost`.
+2. Add your credentials to a `.env` file in the repo root:
+
+```
+STRAVA_CLIENT_ID=your_client_id
+STRAVA_CLIENT_SECRET=your_client_secret
+```
+
+Then after each session:
+
+```bash
+python fetch_activities.py   # download new GPX files
+python analyze.py --new      # generate reports for them
+```
+
+The first run opens a browser for OAuth. After that, tokens are cached and refreshed automatically.
+
+### Automating with cron
+
+To have it run every day at 10am without thinking about it, add this to your crontab (`crontab -e`):
+
+```
+0 10 * * * cd /path/to/offball && source .venv/bin/activate && python fetch_activities.py && python analyze.py --new >> logs/cron.log 2>&1
+```
+
+Create the log directory first:
+
+```bash
+mkdir -p logs
+```
+
+The script reads `.env` directly so credentials work without needing to export them in the crontab.
+
+---
 
 Only football sessions get processed. Offball checks the `<type>` field on each GPX track and skips anything that isn't tagged `football` or `soccer` (Strava uses both). Runs, rides, swims — all ignored.
 

@@ -16,6 +16,13 @@ profile/
 # GPX data
 *.gpx
 
+# Logs
+logs/
+
+# Strava auth cache
+.strava_cache.json
+.env
+
 # OS junk
 .DS_Store
 Thumbs.db
