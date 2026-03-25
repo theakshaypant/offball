@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ summary.activity_name }} — Offball</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0f0f17;
+    --surface:  #1a1a2e;
+    --card:     #16213e;
+    --border:   #2a2a44;
+    --accent:   #64B5F6;
+    --text:     #e0e0e0;
+    --muted:    #888;
+    --gold:     #c8a84b;
+    --silver:   #9e9e9e;
+    --bronze:   #cd7f32;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  a { color: var(--accent); }
+
+  /* ── Layout ── */
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin: 20px 0;
+  }
+  .section > summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 24px;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    border-radius: 12px;
+  }
+  .section > summary::-webkit-details-marker { display: none; }
+  .section > summary:hover { background: rgba(255,255,255,0.03); }
+  .section > summary h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin: 0;
+  }
+  .section > summary::after {
+    content: '▲';
+    font-size: 0.65rem;
+    color: var(--muted);
+    transition: transform 0.2s;
+  }
+  .section:not([open]) > summary { border-radius: 12px; }
+  .section:not([open]) > summary::after { content: '▼'; }
+  .section-body {
+    padding: 0 24px 24px;
+  }
+
+  /* ── Header ── */
+  .header {
+    background: linear-gradient(135deg, #0d1b2e 0%, #1a1a2e 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 32px 0 24px;
+    margin-bottom: 20px;
+  }
+  .header h1 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .header .subtitle {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-bottom: 24px;
+  }
+  .header .subtitle span { color: var(--accent); }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  @media (max-width: 600px) {
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  .stat-tile {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    text-align: center;
+  }
+  .stat-tile .value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -0.5px;
+    line-height: 1.2;
+  }
+  .stat-tile .label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* ── Two-col ── */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    align-items: start;
+  }
+  @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+
+  /* ── Tables ── */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+  .data-table th {
+    text-align: left;
+    padding: 8px 10px;
+    color: var(--muted);
+    font-weight: 500;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border);
+  }
+  .data-table td {
+    padding: 9px 10px;
+    border-bottom: 1px solid #1e1e30;
+    vertical-align: middle;
+  }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr.fastest td { color: var(--accent); font-weight: 600; }
+  .data-table tr:hover td { background: rgba(255,255,255,0.03); }
+
+  .zone-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+
+  /* ── Map ── */
+  .map-iframe {
+    width: 100%;
+    height: 460px;
+    border: none;
+    border-radius: 8px;
+    background: #111;
+  }
+  .map-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 14px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+  .legend-swatch {
+    width: 24px; height: 5px;
+    border-radius: 3px;
+  }
+
+  /* ── Sprint table ── */
+  .empty-state {
+    text-align: center;
+    color: var(--muted);
+    padding: 32px 0;
+    font-size: 0.9rem;
+  }
+
+  /* ── Player card ── */
+  .profile-grid {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 28px;
+    align-items: start;
+  }
+  @media (max-width: 750px) { .profile-grid { grid-template-columns: 1fr; } }
+
+  .player-card {
+    border-radius: 14px;
+    padding: 26px 22px;
+    position: relative;
+    overflow: hidden;
+    border: 2px solid;
+  }
+  .player-card.gold {
+    background: linear-gradient(145deg, #2a1f00, #1a1500);
+    border-color: var(--gold);
+  }
+  .player-card.silver {
+    background: linear-gradient(145deg, #1a1a1a, #111111);
+    border-color: var(--silver);
+  }
+  .player-card.bronze {
+    background: linear-gradient(145deg, #1f1200, #110a00);
+    border-color: var(--bronze);
+  }
+
+  .card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+  }
+  .card-ovr {
+    font-size: 3.2rem;
+    font-weight: 900;
+    line-height: 1;
+  }
+  .card-pos-block { text-align: right; }
+  .card-pos {
+    font-size: 1.4rem;
+    font-weight: 700;
+    display: block;
+  }
+  .card-icon { font-size: 1.8rem; display: block; margin-top: 2px; }
+
+  .gold   .card-ovr, .gold   .card-pos { color: var(--gold); }
+  .silver .card-ovr, .silver .card-pos { color: var(--silver); }
+  .bronze .card-ovr, .bronze .card-pos { color: var(--bronze); }
+
+  .card-archetype {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .attr-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+  .attr-row {
+    display: grid;
+    grid-template-columns: 38px 1fr 34px;
+    align-items: center;
+    gap: 8px;
+  }
+  .attr-key {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+  .attr-bar-bg {
+    background: rgba(255,255,255,0.08);
+    border-radius: 4px;
+    height: 6px;
+    overflow: hidden;
+  }
+  .attr-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.6s ease;
+  }
+  .attr-val {
+    font-size: 0.9rem;
+    font-weight: 700;
+    text-align: right;
+    color: #fff;
+  }
+
+  .card-similar {
+    font-size: 0.78rem;
+    color: var(--muted);
+    border-top: 1px solid rgba(255,255,255,0.08);
+    padding-top: 14px;
+  }
+  .card-similar strong { color: var(--text); }
+
+  .profile-right h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .archetype-desc {
+    color: var(--muted);
+    font-size: 0.875rem;
+    margin-bottom: 18px;
+    line-height: 1.6;
+  }
+
+  /* ── Relative effort ── */
+  .effort-card {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+  .effort-score {
+    font-size: 4rem;
+    font-weight: 900;
+    color: var(--accent);
+    line-height: 1;
+    min-width: 90px;
+  }
+  .effort-meta .label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+  .effort-meta .context {
+    font-size: 0.9rem;
+    color: var(--text);
+    margin-top: 4px;
+  }
+  .effort-note {
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-top: 6px;
+  }
+
+  /* ── Footer ── */
+  footer {
+    text-align: center;
+    padding: 32px 0 40px;
+    color: var(--muted);
+    font-size: 0.8rem;
+    border-top: 1px solid var(--border);
+    margin-top: 32px;
+  }
+  footer strong { color: var(--accent); }
+
+  /* ── Note text ── */
+  .note {
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-top: 10px;
+  }
+
+  /* ── Sortable tables ── */
+  .data-table th[data-sortable] {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .data-table th[data-sortable]:hover { color: var(--text); }
+  .data-table th[data-sortable]::after {
+    content: ' ⇅';
+    font-size: 0.65rem;
+    color: var(--border);
+  }
+  .data-table th[data-sortable].asc::after  { content: ' ↑'; color: var(--accent); }
+  .data-table th[data-sortable].desc::after { content: ' ↓'; color: var(--accent); }
+</style>
+</head>
+<body>
+
+<!-- ══ HEADER ══════════════════════════════════════════════════════════════ -->
+<header class="header">
+  <div class="container">
+    <h1>{{ summary.activity_name }}</h1>
+    <p class="subtitle">{{ summary.start_time }} · <span>Football (Soccer)</span></p>
+
+    <div class="stat-grid">
+      <div class="stat-tile">
+        <div class="value">{{ summary.total_dist_km }} km</div>
+        <div class="label">Distance</div>
+      </div>
+      <div class="stat-tile">
+        <div class="value">{{ summary.moving_time }}</div>
+        <div class="label">Moving Time</div>
+      </div>
+      <div class="stat-tile">
+        <div class="value">{{ summary.elapsed_time }}</div>
+        <div class="label">Total Time</div>
+      </div>
+      <div class="stat-tile">
+        <div class="value">{{ summary.avg_speed_kmh }} km/h</div>
+        <div class="label">Avg Speed</div>
+      </div>
+      <div class="stat-tile">
+        <div class="value">{{ summary.max_speed_kmh }} km/h</div>
+        <div class="label">Max Speed</div>
+      </div>
+      <div class="stat-tile">
+        <div class="value">{{ summary.avg_pace }} /km</div>
+        <div class="label">Avg Pace</div>
+      </div>
+      <div class="stat-tile">
+        <div class="value">{{ summary.avg_hr }} bpm</div>
+        <div class="label">Avg Heart Rate</div>
+      </div>
+      <div class="stat-tile">
+        <div class="value">{{ summary.max_hr }} bpm</div>
+        <div class="label">Max Heart Rate</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="container">
+
+<!-- ══ MAP ════════════════════════════════════════════════════════════════ -->
+<details class="section" open>
+  <summary><h2>GPS Track, Coverage &amp; Speed Heatmap</h2></summary>
+  <div class="section-body">
+  <iframe class="map-iframe"
+    src="data:text/html;base64,{{ map_b64 }}"
+    title="GPS track map"></iframe>
+
+  <div class="map-legend">
+    {% for label, color in speed_zone_colors.items() %}
+    <div class="legend-item">
+      <div class="legend-swatch" style="background:{{ color }}"></div>
+      {{ label }}
+    </div>
+    {% endfor %}
+  </div>
+  </div>
+</details>
+
+<!-- ══ SPEED ZONES ════════════════════════════════════════════════════════ -->
+<details class="section" open>
+  <summary><h2>Speed Zones</h2></summary>
+  <div class="section-body">
+  <div class="two-col">
+    <div>{{ speed_zone_chart }}</div>
+    <div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th data-sortable>Zone</th>
+            <th data-sortable>Range</th>
+            <th data-sortable>Time</th>
+            <th data-sortable>Distance</th>
+            <th data-sortable>%</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in zones_df %}
+          <tr>
+            <td><span class="zone-dot" style="background:{{ row.color }}"></span>{{ row.zone_label }}</td>
+            <td style="color:var(--muted);font-size:0.8rem">
+              {% if loop.index == 1 %}&lt;7
+              {% elif loop.index == 2 %}7–14
+              {% elif loop.index == 3 %}14–21
+              {% elif loop.index == 4 %}21–25
+              {% else %}&gt;25{% endif %} km/h
+            </td>
+            <td>{{ row.time_formatted }}</td>
+            <td>{{ (row.dist_m / 1000) | round(2) }} km</td>
+            <td>{{ row.pct_time }}%</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="note" style="margin-top:14px">Football-specific zones based on GPS speed.</p>
+    </div>
+  </div>
+  </div>
+</details>
+
+<!-- ══ WORK RATE ══════════════════════════════════════════════════════════ -->
+<details class="section" open>
+  <summary><h2>Work Rate Over Time</h2></summary>
+  <div class="section-body">
+  {{ work_rate_chart }}
+  <p class="note">60-second rolling average. Blue = speed · Red = heart rate. Dashed line = Z4 threshold (80% max HR). <span style="color:#9c27b0">■</span> Purple bands = sprint efforts (&gt;{{ sprint_threshold }} km/h).</p>
+  </div>
+</details>
+
+<!-- ══ HEART RATE ZONES ═══════════════════════════════════════════════════ -->
+<details class="section" open>
+  <summary><h2>Heart Rate Zones</h2></summary>
+  <div class="section-body">
+  <div class="two-col">
+    <div>{{ hr_donut_chart }}</div>
+    <div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th data-sortable>Zone</th>
+            <th data-sortable>BPM Range</th>
+            <th data-sortable>Time</th>
+            <th data-sortable>%</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in hr_zones_df %}
+          <tr>
+            <td><span class="zone-dot" style="background:{{ row.color }}"></span>{{ row.zone_label }}</td>
+            <td>{{ row.bpm_range }}</td>
+            <td>{{ row.time_formatted }}</td>
+            <td>{{ row.pct_time }}%</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="note" style="margin-top:14px">Zones based on {{ summary.max_hr_setting }} bpm max HR. Adjust with <code>--max-hr</code>.</p>
+    </div>
+  </div>
+  </div>
+</details>
+
+<!-- ══ KM SPLITS ══════════════════════════════════════════════════════════ -->
+<details class="section" open>
+  <summary><h2>Kilometre Splits</h2></summary>
+  <div class="section-body">
+  {{ pace_chart }}
+  <table class="data-table" style="margin-top:16px">
+    <thead>
+      <tr>
+        <th data-sortable>Km</th>
+        <th data-sortable>Pace</th>
+        <th data-sortable>Avg Speed</th>
+        <th data-sortable>Split Time</th>
+        <th data-sortable>Avg HR</th>
+        <th data-sortable>Elev Gain</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in splits_df %}
+      <tr class="{{ 'fastest' if row.is_fastest else '' }}">
+        <td>{{ row.km }}</td>
+        <td>{{ row.pace_formatted }}{% if row.is_fastest %} ⚡{% endif %}</td>
+        <td>{{ row.avg_speed_kmh }} km/h</td>
+        <td>{{ row.split_time }}</td>
+        <td>{% if row.avg_hr %}{{ row.avg_hr }} bpm{% else %}—{% endif %}</td>
+        <td>+{{ row.elev_gain_m }} m</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</details>
+
+<!-- ══ SPRINT EFFORTS ═════════════════════════════════════════════════════ -->
+<details class="section" open>
+  <summary><h2>Sprint Efforts</h2></summary>
+  <div class="section-body">
+  {% if sprints_df %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th data-sortable>#</th>
+        <th data-sortable>At (min)</th>
+        <th data-sortable>Duration</th>
+        <th data-sortable>Distance</th>
+        <th data-sortable>Peak Speed</th>
+        <th data-sortable>Avg HR</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in sprints_df %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ row.start_elapsed_min }} min</td>
+        <td>{{ row.duration_s }}s</td>
+        <td>{{ row.dist_m | int }} m</td>
+        <td>{{ row.peak_speed_kmh }} km/h</td>
+        <td>{% if row.avg_hr %}{{ row.avg_hr }} bpm{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="note">Sprint threshold: {{ sprint_threshold }} km/h · min duration: 5s. Adjust with <code>--sprint-threshold</code>.</p>
+  {% else %}
+  <div class="empty-state">No sprint efforts detected above {{ sprint_threshold }} km/h. Lower the threshold with <code>--sprint-threshold</code>.</div>
+  {% endif %}
+  </div>
+</details>
+
+<!-- ══ PLAYER PROFILE ═════════════════════════════════════════════════════ -->
+<details class="section" open>
+  <summary><h2>Player Profile</h2></summary>
+  <div class="section-body">
+  <div class="profile-grid">
+
+    <!-- EA FC-style card -->
+    <div class="player-card {{ profile.rarity }}">
+      <div class="card-top">
+        <div>
+          <div class="card-ovr">{{ profile.overall }}</div>
+        </div>
+        <div class="card-pos-block">
+          <span class="card-pos">{{ profile.archetype_data.position }}</span>
+          <span class="card-icon">{{ profile.archetype_data.icon }}</span>
+        </div>
+      </div>
+
+      <div class="card-archetype">{{ profile.archetype }}</div>
+
+      <div class="attr-list">
+        {% set attr_display = [
+          ('PAC', 'pace',         '#64B5F6'),
+          ('PHY', 'physical',     '#81C784'),
+          ('STA', 'stamina',      '#FFD54F'),
+          ('EXP', 'explosiveness','#FF8A65'),
+          ('WRK', 'work_rate',    '#CE93D8'),
+        ] %}
+        {% for key, field, color in attr_display %}
+        <div class="attr-row">
+          <span class="attr-key">{{ key }}</span>
+          <div class="attr-bar-bg">
+            <div class="attr-bar-fill"
+                 style="width:{{ profile.attrs[field] }}%;background:{{ color }}"></div>
+          </div>
+          <span class="attr-val">{{ profile.attrs[field] }}</span>
+        </div>
+        {% endfor %}
+      </div>
+
+    </div>
+
+    <!-- Radar + description -->
+    <div class="profile-right">
+      <h3>{{ profile.archetype_data.icon }} {{ profile.archetype }}</h3>
+      <p class="archetype-desc">{{ profile.archetype_data.description }}</p>
+
+      {{ radar_chart }}
+
+      {% if profile.top3_archetypes | length > 1 %}
+      <p class="note" style="margin-top:6px">
+        Runner-up: {{ profile.top3_archetypes[1][0] }}
+        {% if profile.top3_archetypes | length > 2 %}
+        · {{ profile.top3_archetypes[2][0] }}
+        {% endif %}
+      </p>
+      {% endif %}
+    </div>
+  </div>
+  </div>
+</details>
+
+<!-- ══ RELATIVE EFFORT ════════════════════════════════════════════════════ -->
+<details class="section" open>
+  <summary><h2>Relative Effort</h2></summary>
+  <div class="section-body">
+  <div class="effort-card">
+    <div class="effort-score">{{ summary.relative_effort }}</div>
+    <div class="effort-meta">
+      <div class="label">Relative Effort Score</div>
+      <div class="context">
+        {% set re = summary.relative_effort %}
+        {% if re < 50 %}
+          Light recovery session — very low intensity.
+        {% elif re < 100 %}
+          Easy aerobic effort — comfortable throughout.
+        {% elif re < 150 %}
+          Moderate effort — solid aerobic work with some intensity.
+        {% elif re < 200 %}
+          Hard effort — sustained intensity across the session.
+        {% elif re < 280 %}
+          Very hard — high-intensity football with significant HR load.
+        {% else %}
+          Extreme effort — elite-level intensity for the session duration.
+        {% endif %}
+      </div>
+      <div class="effort-note">Calculated using Edwards TRIMP method (Strava Relative Effort equivalent).</div>
+    </div>
+  </div>
+  </div>
+</details>
+
+</div><!-- /container -->
+
+<footer>
+  <div class="container">
+    Generated by <strong>Offball</strong> · {{ generated_at }}
+  </div>
+</footer>
+
+<script>
+(function () {
+  // Parse a cell's text to a sortable value (number if possible, else string)
+  function cellVal(td) {
+    var raw = td.textContent.trim();
+    // hh:mm:ss → total seconds
+    var t3 = raw.match(/^(\d+):(\d{2}):(\d{2})$/);
+    if (t3) return parseInt(t3[1]) * 3600 + parseInt(t3[2]) * 60 + parseInt(t3[3]);
+    // mm:ss → total seconds
+    var t2 = raw.match(/^(\d+):(\d{2})$/);
+    if (t2) return parseInt(t2[1]) * 60 + parseInt(t2[2]);
+    // Strip units like "km/h", "km", "bpm", "m", "s", "min", "%" and leading "+"
+    var stripped = raw.replace(/^[+]/, '').replace(/\s*(km\/h|km|bpm|m|s|min|%)\s*$/i, '').trim();
+    var num = parseFloat(stripped);
+    return isNaN(num) ? raw.toLowerCase() : num;
+  }
+
+  function sortTable(th) {
+    var table = th.closest('table');
+    var tbody = table.tBodies[0];
+    var ths = Array.from(th.parentElement.querySelectorAll('th[data-sortable]'));
+    var colIdx = ths.indexOf(th);
+    var asc = !th.classList.contains('asc');
+
+    // Reset all headers
+    ths.forEach(function (h) { h.classList.remove('asc', 'desc'); });
+    th.classList.add(asc ? 'asc' : 'desc');
+
+    var rows = Array.from(tbody.rows);
+    rows.sort(function (a, b) {
+      var va = cellVal(a.cells[colIdx]);
+      var vb = cellVal(b.cells[colIdx]);
+      if (va < vb) return asc ? -1 : 1;
+      if (va > vb) return asc ? 1 : -1;
+      return 0;
+    });
+    rows.forEach(function (r) { tbody.appendChild(r); });
+  }
+
+  document.querySelectorAll('th[data-sortable]').forEach(function (th) {
+    th.addEventListener('click', function () { sortTable(th); });
+  });
+})();
+</script>
+</body>
+</html>
