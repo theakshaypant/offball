@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Offball — Activity Log</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #0f0f17;
+    --surface: #1a1a2e;
+    --card:    #16213e;
+    --border:  #2a2a44;
+    --accent:  #64B5F6;
+    --text:    #e0e0e0;
+    --muted:   #888;
+    --gold:    #c8a84b;
+    --silver:  #9e9e9e;
+    --bronze:  #cd7f32;
+  }
+
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.5; min-height: 100vh; }
+  a { color: inherit; text-decoration: none; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+
+  /* ── Header ── */
+  .header { background: linear-gradient(135deg, #0d1b2e 0%, #1a1a2e 100%); border-bottom: 1px solid var(--border); padding: 36px 0 28px; margin-bottom: 32px; }
+  .header h1 { font-size: 1.8rem; font-weight: 700; margin-bottom: 4px; }
+  .header h1 span { color: var(--accent); }
+  .header .subtitle { color: var(--muted); font-size: 0.9rem; }
+
+  /* ── Overview card ── */
+  .overview { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; margin-bottom: 24px; }
+
+  /* Period switcher */
+  .period-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+  .period-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+  .period-select {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 0.82rem;
+    padding: 6px 32px 6px 12px;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .period-select:hover, .period-select:focus { border-color: var(--accent); }
+
+  /* Stat tiles */
+  .ov-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  @media (max-width: 700px) { .ov-stats { grid-template-columns: repeat(2, 1fr); } }
+  .ov-tile { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; text-align: center; }
+  .ov-tile .val { font-size: 1.5rem; font-weight: 700; color: #fff; line-height: 1.2; }
+  .ov-tile .lbl { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-top: 4px; }
+  .ov-tile .sub { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+
+  /* Bottom panels */
+  .ov-bottom { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  @media (max-width: 800px) { .ov-bottom { grid-template-columns: 1fr; } }
+
+  .ov-panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; }
+  .ov-panel-title { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin-bottom: 12px; }
+
+  /* Rarity breakdown */
+  .rarity-row { display: flex; gap: 12px; align-items: center; }
+  .rarity-item { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; }
+  .rarity-num { font-size: 1.6rem; font-weight: 800; line-height: 1; }
+  .rarity-lbl { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+  .rarity-item.gold   .rarity-num { color: var(--gold); }
+  .rarity-item.silver .rarity-num { color: var(--silver); }
+  .rarity-item.bronze .rarity-num { color: var(--bronze); }
+  .rarity-note { font-size: 0.66rem; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+  .rarity-note .g { color: var(--gold); }
+  .rarity-note .s { color: var(--silver); }
+  .rarity-note .b { color: var(--bronze); }
+
+  /* Attribute bars */
+  .attr-list { display: flex; flex-direction: column; gap: 8px; }
+  .attr-row { display: grid; grid-template-columns: 36px 1fr 30px; align-items: center; gap: 8px; }
+  .attr-key { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+  .attr-bar-bg { background: rgba(255,255,255,0.08); border-radius: 4px; height: 5px; overflow: hidden; }
+  .attr-bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+  .attr-val { font-size: 0.85rem; font-weight: 700; text-align: right; color: #fff; }
+
+  /* Archetype panel */
+  .arch-item { display: flex; align-items: flex-start; gap: 10px; }
+  .arch-icon-wrap { font-size: 1.5rem; line-height: 1; padding-top: 2px; flex-shrink: 0; }
+  .arch-info .arch-name { font-size: 0.9rem; font-weight: 600; color: #fff; }
+  .arch-info .arch-sublabel { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 2px; }
+
+  /* ── Section headers ── */
+  .section-block { margin-bottom: 24px; }
+  .section-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .section-hdr-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+
+  /* ── Trends ── */
+  .trends-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 750px) { .trends-grid { grid-template-columns: 1fr; } }
+  .trend-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 20px 8px; }
+  .trend-card-title { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin-bottom: 4px; }
+  .trend-chart { width: 100%; }
+
+  /* ── Personal Bests ── */
+  .bests-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  @media (max-width: 900px) { .bests-grid { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 550px) { .bests-grid { grid-template-columns: repeat(2, 1fr); } }
+  .best-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 14px;
+    text-align: center;
+    transition: border-color 0.15s, transform 0.15s;
+    cursor: pointer;
+  }
+  .best-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .best-icon { font-size: 1.3rem; margin-bottom: 6px; }
+  .best-val  { font-size: 1.5rem; font-weight: 800; color: #fff; line-height: 1.1; }
+  .best-unit { font-size: 0.72rem; color: var(--muted); font-weight: 400; }
+  .best-lbl  { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-top: 4px; }
+  .best-date { font-size: 0.63rem; color: var(--accent); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .best-card.no-data { opacity: 0.4; cursor: default; }
+  .best-card.no-data:hover { border-color: var(--border); transform: none; }
+
+  /* ── Form Indicator ── */
+  .form-cal-row { display: grid; grid-template-columns: 340px 1fr; gap: 16px; margin-bottom: 24px; }
+  @media (max-width: 820px) { .form-cal-row { grid-template-columns: 1fr; } }
+
+  .form-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 22px; }
+  .form-note { font-size: 0.63rem; color: var(--muted); margin-top: 2px; }
+  .form-dots { display: flex; gap: 6px; margin: 12px 0 14px; }
+  .form-dot { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 800; }
+  .form-dot.gold   { background: var(--gold);   color: #1a1000; }
+  .form-dot.silver { background: var(--silver); color: #111; }
+  .form-dot.bronze { background: var(--bronze); color: #1a0a00; }
+  .form-dot.empty  { background: var(--border); color: var(--muted); font-size: 0.65rem; }
+  .form-metrics { display: flex; flex-direction: column; gap: 8px; }
+  .form-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  .form-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .form-lbl  { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  .form-cur  { font-size: 0.95rem; font-weight: 700; color: #fff; text-align: right; }
+  .form-delta { font-size: 0.78rem; font-weight: 700; min-width: 52px; text-align: right; }
+  .form-delta.up   { color: #66BB6A; }
+  .form-delta.down { color: #EF5350; }
+  .form-delta.flat { color: var(--muted); }
+  .form-no-prev { font-size: 0.68rem; color: var(--muted); font-style: italic; margin-top: 4px; }
+
+  /* ── Activity Calendar ── */
+  .cal-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 22px; }
+  .cal-grid { display: flex; flex-direction: column; gap: 10px; }
+  .cal-year  { display: flex; align-items: flex-start; gap: 10px; }
+  .cal-year-label { font-size: 0.6rem; font-weight: 600; color: var(--muted); width: 28px; flex-shrink: 0; padding-top: 17px; }
+  .cal-body  { display: grid; gap: 2px 3px; }  /* columns/rows set inline */
+  .cal-month-lbl { font-size: 0.58rem; color: var(--muted); white-space: nowrap; overflow: hidden; align-self: end; padding-bottom: 1px; }
+  .cal-cell  { width: 13px; height: 13px; border-radius: 2px; cursor: default; }
+  .cal-legend { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 0.63rem; color: var(--muted); flex-wrap: wrap; }
+  .cal-legend-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+  /* ── Activity grid ── */
+  .grid-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .grid-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+  .grid-count { font-size: 0.78rem; color: var(--muted); }
+
+  .activity-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; padding-bottom: 48px; }
+  .activity-card.hidden { display: none; }
+  .activity-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s; cursor: pointer; }
+  .activity-card:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 8px 32px rgba(100,181,246,0.12); }
+
+  .card-header { display: flex; align-items: stretch; border-bottom: 1px solid var(--border); }
+  .ovr-block { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 18px 20px; min-width: 88px; border-right: 1px solid var(--border); }
+  .ovr-block.gold   { background: linear-gradient(145deg, #2a1f00, #1a1500); }
+  .ovr-block.silver { background: linear-gradient(145deg, #1a1a1a, #111111); }
+  .ovr-block.bronze { background: linear-gradient(145deg, #1f1200, #110a00); }
+  .ovr-number { font-size: 2.4rem; font-weight: 900; line-height: 1; }
+  .gold   .ovr-number { color: var(--gold); }
+  .silver .ovr-number { color: var(--silver); }
+  .bronze .ovr-number { color: var(--bronze); }
+  .ovr-pos { font-size: 0.78rem; font-weight: 700; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .gold   .ovr-pos { color: var(--gold); }
+  .silver .ovr-pos { color: var(--silver); }
+  .bronze .ovr-pos { color: var(--bronze); }
+  .ovr-icon { font-size: 1.2rem; margin-top: 3px; }
+
+  .card-meta { flex: 1; padding: 14px 16px; display: flex; flex-direction: column; justify-content: center; gap: 4px; min-width: 0; }
+  .card-name { font-size: 0.95rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card-date { font-size: 0.78rem; color: var(--muted); }
+  .card-archetype { font-size: 0.75rem; color: var(--accent); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+
+  .card-stats { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--border); }
+  .stat { padding: 12px 8px; text-align: center; border-right: 1px solid var(--border); }
+  .stat:last-child { border-right: none; }
+  .stat .val { font-size: 1rem; font-weight: 700; color: #fff; line-height: 1.2; }
+  .stat .lbl { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-top: 2px; }
+
+  .empty { text-align: center; padding: 80px 20px; color: var(--muted); }
+  .no-results { display: none; text-align: center; padding: 40px 0; color: var(--muted); font-size: 0.9rem; }
+  .no-results.visible { display: block; }
+
+  footer { text-align: center; padding: 32px 0 40px; color: var(--muted); font-size: 0.8rem; border-top: 1px solid var(--border); }
+  footer strong { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="container">
+    <h1><span>Offball</span> — Activity Log</h1>
+    <p class="subtitle">{{ activities | length }} session{{ 's' if activities | length != 1 else '' }} recorded</p>
+  </div>
+</header>
+
+<div class="container">
+
+{% if overview %}
+<div class="overview">
+  <!-- Period switcher -->
+  <div class="period-row">
+    <span class="period-label">Performance Overview</span>
+    <select class="period-select" id="period-select">
+      <option value="all">All Time</option>
+      {% for m in overview.monthly %}
+      <option value="{{ m.key }}">{{ m.label }} ({{ m.sessions }})</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- Stat tiles -->
+  <div class="ov-stats">
+    <div class="ov-tile">
+      <div class="val" id="ov-sessions">{{ overview.sessions }}</div>
+      <div class="lbl">Games Played</div>
+    </div>
+    <div class="ov-tile">
+      <div class="val" id="ov-dist">{{ overview.total_dist_km }} km</div>
+      <div class="lbl">Total Distance</div>
+    </div>
+    <div class="ov-tile">
+      <div class="val" id="ov-time">{{ overview.total_moving }}</div>
+      <div class="lbl">Playing Time</div>
+    </div>
+    <div class="ov-tile">
+      <div class="val" id="ov-hr">{{ overview.avg_hr }} bpm</div>
+      <div class="lbl">Avg Heart Rate</div>
+    </div>
+    <div class="ov-tile">
+      <div class="val" id="ov-best-ovr">{{ overview.best_ovr }}</div>
+      <div class="lbl">Best Rating</div>
+      <div class="sub" id="ov-avg-ovr-sub">avg {{ overview.avg_ovr }}</div>
+    </div>
+    <div class="ov-tile">
+      <div class="val" id="ov-best-re">{{ overview.best_re }}</div>
+      <div class="lbl">Best Effort</div>
+      <div class="sub" id="ov-avg-re-sub">avg {{ overview.avg_re }}</div>
+    </div>
+    <div class="ov-tile" style="grid-column: span 2">
+      <div class="val" id="ov-top-arch">{{ overview.top_arch_icon }} {{ overview.top_archetype }}</div>
+      <div class="lbl">Most Common Archetype</div>
+      <div class="sub" id="ov-top-arch-sub">{{ overview.top_arch_count }} game{{ 's' if overview.top_arch_count != 1 else '' }}</div>
+    </div>
+  </div>
+
+  <!-- Bottom panels -->
+  <div class="ov-bottom">
+
+    <div class="ov-panel">
+      <div class="ov-panel-title">Card Breakdown</div>
+      <div class="rarity-row">
+        <div class="rarity-item gold"><div class="rarity-num" id="ov-gold">{{ overview.gold_count }}</div><div class="rarity-lbl">Gold</div></div>
+        <div class="rarity-item silver"><div class="rarity-num" id="ov-silver">{{ overview.silver_count }}</div><div class="rarity-lbl">Silver</div></div>
+        <div class="rarity-item bronze"><div class="rarity-num" id="ov-bronze">{{ overview.bronze_count }}</div><div class="rarity-lbl">Bronze</div></div>
+      </div>
+      <p class="rarity-note">OVR = avg of PAC · PHY · STA · EXP · WRK<br><span class="g">Gold</span> ≥ 85 &nbsp;·&nbsp; <span class="s">Silver</span> ≥ 75 &nbsp;·&nbsp; <span class="b">Bronze</span> &lt; 75</p>
+    </div>
+
+    <div class="ov-panel">
+      <div class="ov-panel-title">Average Attribute Profile</div>
+      <div class="attr-list">
+        {% set attr_display = [
+          ('PAC', 'pace',          '#64B5F6'),
+          ('PHY', 'physical',      '#81C784'),
+          ('STA', 'stamina',       '#FFD54F'),
+          ('EXP', 'explosiveness', '#FF8A65'),
+          ('WRK', 'work_rate',     '#CE93D8'),
+        ] %}
+        {% for key, field, color in attr_display %}
+        <div class="attr-row">
+          <span class="attr-key">{{ key }}</span>
+          <div class="attr-bar-bg">
+            <div class="attr-bar-fill" id="bar-{{ field }}"
+                 style="width:{{ overview.avg_attrs[field] }}%;background:{{ color }}"></div>
+          </div>
+          <span class="attr-val" id="val-{{ field }}">{{ overview.avg_attrs[field] }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="ov-panel">
+      <div class="ov-panel-title">Player Archetype</div>
+      <div class="arch-item" style="margin-top:4px">
+        <div class="arch-icon-wrap" id="arch-computed-icon">{{ overview.archetype_computed_icon }}</div>
+        <div class="arch-info">
+          <div class="arch-sublabel">Based on avg attributes</div>
+          <div class="arch-name" id="arch-computed-name">{{ overview.archetype_computed }}</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endif %}
+
+{% if activities | length >= 1 %}
+<!-- ── Form Indicator + Calendar ── -->
+<div class="form-cal-row">
+
+  <div class="form-card">
+    <div class="ov-panel-title">Form <span class="form-note">— last 5 games, all time</span></div>
+    <div class="form-dots" id="form-dots"></div>
+    <div class="form-metrics" id="form-metrics"></div>
+  </div>
+
+  <div class="cal-card">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div class="ov-panel-title">Activity Calendar <span class="form-note">— one cell per week</span></div>
+      <div style="display:flex;gap:20px">
+        <div style="text-align:right">
+          <div style="font-size:1.2rem;font-weight:800;color:#fff" id="cal-current-streak">—</div>
+          <div style="font-size:0.63rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Current Streak</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:1.2rem;font-weight:800;color:var(--accent)" id="cal-longest-streak">—</div>
+          <div style="font-size:0.63rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Longest Streak</div>
+        </div>
+      </div>
+    </div>
+    <div class="cal-grid" id="cal-grid"></div>
+    <div class="cal-legend">
+      <span class="cal-legend-swatch" style="background:rgba(255,255,255,0.08)"></span>No game
+      &nbsp;
+      <span class="cal-legend-swatch" style="background:#cd7f32"></span>Bronze
+      &nbsp;
+      <span class="cal-legend-swatch" style="background:#9e9e9e"></span>Silver
+      &nbsp;
+      <span class="cal-legend-swatch" style="background:#c8a84b"></span>Gold
+    </div>
+  </div>
+
+</div>
+{% endif %}
+
+{% if activities | length >= 2 %}
+<!-- ── Trends ── -->
+<div class="section-block">
+  <div class="section-hdr">
+    <span class="section-hdr-title">Trends</span>
+  </div>
+  <div class="trends-grid">
+    <div class="trend-card">
+      <div class="trend-card-title">Rating &amp; Effort</div>
+      <div class="trend-chart" id="chart-ovr-effort"></div>
+    </div>
+    <div class="trend-card">
+      <div class="trend-card-title">Attribute Progression</div>
+      <div class="trend-chart" id="chart-attrs"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Personal Bests ── -->
+<div class="section-block">
+  <div class="section-hdr">
+    <span class="section-hdr-title">Personal Bests</span>
+  </div>
+  <div class="bests-grid">
+    <a class="best-card" id="best-ovr" href="#">
+      <div class="best-icon">🏆</div>
+      <div class="best-val" id="best-ovr-val">—</div>
+      <div class="best-lbl">Best Rating</div>
+      <div class="best-date" id="best-ovr-date"></div>
+    </a>
+    <a class="best-card" id="best-dist" href="#">
+      <div class="best-icon">📍</div>
+      <div class="best-val" id="best-dist-val">—</div>
+      <div class="best-lbl">Most Distance</div>
+      <div class="best-date" id="best-dist-date"></div>
+    </a>
+    <a class="best-card" id="best-effort" href="#">
+      <div class="best-icon">🔥</div>
+      <div class="best-val" id="best-effort-val">—</div>
+      <div class="best-lbl">Most Effort</div>
+      <div class="best-date" id="best-effort-date"></div>
+    </a>
+    <a class="best-card" id="best-spd" href="#">
+      <div class="best-icon">⚡</div>
+      <div class="best-val" id="best-spd-val">—</div>
+      <div class="best-lbl">Top Speed</div>
+      <div class="best-date" id="best-spd-date"></div>
+    </a>
+    <a class="best-card" id="best-active" href="#">
+      <div class="best-icon">⏱️</div>
+      <div class="best-val" id="best-active-val">—</div>
+      <div class="best-lbl">Most Active</div>
+      <div class="best-date" id="best-active-date"></div>
+    </a>
+  </div>
+</div>
+{% endif %}
+
+{% if activities %}
+<div class="grid-header">
+  <span class="grid-title">Sessions</span>
+  <span class="grid-count" id="grid-count">{{ activities | length }} games</span>
+</div>
+<div class="no-results" id="no-results">No sessions for this period.</div>
+<div class="activity-grid">
+  {% for a in activities %}
+  <a class="activity-card" href="{{ a.report_path }}" data-month="{{ a.start_time_iso[:7] }}">
+    <div class="card-header">
+      <div class="ovr-block {{ a.rarity }}">
+        <div class="ovr-number">{{ a.overall }}</div>
+        <div class="ovr-pos">{{ a.position }}</div>
+        <div class="ovr-icon">{{ a.icon }}</div>
+      </div>
+      <div class="card-meta">
+        <div class="card-name">{{ a.activity_name }}</div>
+        <div class="card-date">{{ a.start_time_fmt }}</div>
+        <div class="card-archetype">{{ a.archetype }}</div>
+      </div>
+    </div>
+    <div class="card-stats">
+      <div class="stat"><div class="val">{{ a.total_dist_km }}</div><div class="lbl">km</div></div>
+      <div class="stat"><div class="val">{{ a.moving_time }}</div><div class="lbl">Moving</div></div>
+      <div class="stat"><div class="val">{{ a.avg_hr }}</div><div class="lbl">Avg HR</div></div>
+      <div class="stat"><div class="val">{{ a.relative_effort }}</div><div class="lbl">Effort</div></div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty">No activities found.</div>
+{% endif %}
+
+</div>
+
+<footer>
+  <div class="container">Generated by <strong>Offball</strong> · {{ generated_at }}</div>
+</footer>
+
+<script>
+(function () {
+
+  /* ── Static activity data (oldest first for charts) ── */
+  var SESSIONS = [
+    {% for a in activities | reverse %}
+    {
+      date:     '{{ a.start_time_iso[:10] }}',
+      label:    '{{ a.start_time_fmt }}',
+      month:    '{{ a.start_time_iso[:7] }}',
+      ovr:      {{ a.overall }},
+      dist:     {{ a.total_dist_km }},
+      effort:   {{ a.relative_effort }},
+      max_spd:  {{ a.max_speed_kmh }},
+      avg_hr:   {{ a.avg_hr }},
+      moving_s: 0,  /* filled below from RAW_MOVING */
+      pace:     {{ a.attrs.pace }},
+      physical: {{ a.attrs.physical }},
+      stamina:  {{ a.attrs.stamina }},
+      exp:      {{ a.attrs.explosiveness }},
+      work_rate:{{ a.attrs.work_rate }},
+      url:      '{{ a.report_path }}',
+    },
+    {% endfor %}
+  ];
+  /* Fix moving_s: parse HH:MM:SS from card moving_time */
+  var RAW_MOVING = [{% for a in activities | reverse %}'{{ a.moving_time }}',{% endfor %}];
+  SESSIONS.forEach(function (s, i) {
+    var p = RAW_MOVING[i].split(':');
+    s.moving_s = +p[0] * 3600 + +p[1] * 60 + +p[2];
+  });
+
+  /* ── Overview DATA object ── */
+  var DATA = {
+    all: {
+      sessions:     {{ overview.sessions }},
+      dist:         '{{ overview.total_dist_km }} km',
+      time:         '{{ overview.total_moving }}',
+      hr:           '{{ overview.avg_hr }} bpm',
+      best_ovr:     {{ overview.best_ovr }},
+      avg_ovr:      {{ overview.avg_ovr }},
+      best_re:      {{ overview.best_re }},
+      avg_re:       {{ overview.avg_re }},
+      top_arch:     '{{ overview.top_arch_icon }} {{ overview.top_archetype }}',
+      top_arch_sub: '{{ overview.top_arch_count }} game{{ "s" if overview.top_arch_count != 1 else "" }}',
+      gold:         {{ overview.gold_count }},
+      silver:       {{ overview.silver_count }},
+      bronze:       {{ overview.bronze_count }},
+      attrs:        {{ overview.avg_attrs | tojson }},
+      comp_icon:    '{{ overview.archetype_computed_icon }}',
+      comp_name:    '{{ overview.archetype_computed }}',
+    },
+    months: {}
+  };
+
+  {% for m in overview.monthly %}
+  DATA.months['{{ m.key }}'] = {
+    sessions:     {{ m.sessions }},
+    dist:         '{{ m.total_dist_km }} km',
+    time:         '{{ m.total_moving }}',
+    hr:           '{{ m.avg_hr }} bpm',
+    best_ovr:     {{ m.best_ovr }},
+    avg_ovr:      {{ m.avg_ovr }},
+    best_re:      {{ m.best_re }},
+    avg_re:       {{ m.avg_re }},
+    top_arch:     '{{ m.top_arch_icon }} {{ m.top_archetype }}',
+    top_arch_sub: '{{ m.top_arch_count }} game{{ "s" if m.top_arch_count != 1 else "" }}',
+    gold:         {{ m.gold_count }},
+    silver:       {{ m.silver_count }},
+    bronze:       {{ m.bronze_count }},
+    attrs:        {{ m.avg_attrs | tojson }},
+    comp_icon:    '{{ m.archetype_computed_icon }}',
+    comp_name:    '{{ m.archetype_computed }}',
+  };
+  {% endfor %}
+
+  /* ── Helpers ── */
+  var ATTR_FIELDS = ['pace', 'physical', 'stamina', 'explosiveness', 'work_rate'];
+
+  function set(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
+  function setWidth(id, pct) { var el = document.getElementById(id); if (el) el.style.width = pct + '%'; }
+  function setHTML(id, val) { var el = document.getElementById(id); if (el) el.innerHTML = val; }
+  function setHref(id, url) { var el = document.getElementById(id); if (el) el.href = url || '#'; }
+
+  var PLOT_LAYOUT_BASE = {
+    paper_bgcolor: 'rgba(0,0,0,0)',
+    plot_bgcolor:  'rgba(0,0,0,0)',
+    font:          { color: '#888', size: 11, family: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
+    hoverlabel:    { bgcolor: '#1a1a2e', bordercolor: '#444', font: { color: '#e0e0e0', size: 12 } },
+    margin:        { l: 36, r: 36, t: 8, b: 36 },
+    height:        200,
+    hovermode:     'x unified',
+    showlegend:    true,
+    legend:        { orientation: 'h', y: 1.18, x: 0, font: { size: 11 } },
+  };
+  var PLOT_CONFIG = { displayModeBar: false, responsive: true };
+
+  /* ── Trend charts ── */
+  function renderTrendCharts(sessions) {
+    if (!document.getElementById('chart-ovr-effort')) return;
+
+    var dates  = sessions.map(function (s) { return s.date; });
+    var labels = sessions.map(function (s) { return s.label; });
+
+    /* Chart 1: OVR + Effort */
+    var traceOvr = {
+      x: dates, y: sessions.map(function (s) { return s.ovr; }),
+      name: 'OVR', mode: 'lines+markers',
+      line: { color: '#64B5F6', width: 2 }, marker: { size: 5 },
+      hovertemplate: '%{y}',
+      customdata: labels, hovertext: labels,
+      yaxis: 'y',
+    };
+    var traceEff = {
+      x: dates, y: sessions.map(function (s) { return s.effort; }),
+      name: 'Effort', mode: 'lines+markers',
+      line: { color: '#EF5350', width: 2, dash: 'dot' }, marker: { size: 5 },
+      hovertemplate: '%{y}',
+      yaxis: 'y2',
+    };
+    Plotly.react('chart-ovr-effort', [traceOvr, traceEff], Object.assign({}, PLOT_LAYOUT_BASE, {
+      yaxis:  { gridcolor: '#222', zeroline: false, fixedrange: true, title: { text: 'OVR', font: { size: 10 } } },
+      yaxis2: { overlaying: 'y', side: 'right', showgrid: false, zeroline: false, fixedrange: true, title: { text: 'Effort', font: { size: 10 } } },
+      xaxis:  { gridcolor: '#222', zeroline: false, fixedrange: true },
+    }), PLOT_CONFIG);
+
+    /* Chart 2: Attribute progression */
+    var ATTR_CONFIG = [
+      { key: 'pace',      label: 'PAC', color: '#64B5F6' },
+      { key: 'physical',  label: 'PHY', color: '#81C784' },
+      { key: 'stamina',   label: 'STA', color: '#FFD54F' },
+      { key: 'exp',       label: 'EXP', color: '#FF8A65' },
+      { key: 'work_rate', label: 'WRK', color: '#CE93D8' },
+    ];
+    var attrTraces = ATTR_CONFIG.map(function (a) {
+      return {
+        x: dates, y: sessions.map(function (s) { return s[a.key]; }),
+        name: a.label, mode: 'lines+markers',
+        line: { color: a.color, width: 1.5 }, marker: { size: 4 },
+        hovertemplate: '%{y}',
+      };
+    });
+    Plotly.react('chart-attrs', attrTraces, Object.assign({}, PLOT_LAYOUT_BASE, {
+      yaxis: { range: [0, 99], gridcolor: '#222', zeroline: false, fixedrange: true },
+      xaxis: { gridcolor: '#222', zeroline: false, fixedrange: true },
+    }), PLOT_CONFIG);
+  }
+
+  /* ── Personal Bests ── */
+  function renderBests(sessions) {
+    if (!document.getElementById('best-ovr')) return;
+    if (!sessions.length) {
+      ['best-ovr', 'best-dist', 'best-effort', 'best-spd', 'best-active'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.classList.add('no-data');
+      });
+      return;
+    }
+
+    function pickBest(field, fmt, unitEl) {
+      var best = sessions.reduce(function (b, s) { return s[field] > b[field] ? s : b; });
+      return { val: fmt(best[field]), date: best.date, url: best.url };
+    }
+
+    var bOvr    = pickBest('ovr',     function (v) { return v; });
+    var bDist   = pickBest('dist',    function (v) { return v + ' km'; });
+    var bEff    = pickBest('effort',  function (v) { return v; });
+    var bSpd    = pickBest('max_spd', function (v) { return v + ' km/h'; });
+
+    /* moving_s → h m */
+    var bActive = sessions.reduce(function (b, s) { return s.moving_s > b.moving_s ? s : b; });
+    var bActH   = Math.floor(bActive.moving_s / 3600);
+    var bActM   = Math.floor((bActive.moving_s % 3600) / 60);
+    var bActStr = bActH > 0 ? bActH + 'h ' + bActM + 'm' : bActM + 'm';
+
+    function applyBest(id, data) {
+      var card = document.getElementById(id);
+      if (card) {
+        card.href = data.url;
+        card.classList.remove('no-data');
+      }
+      set(id + '-val', data.val);
+      set(id + '-date', data.date);
+    }
+
+    applyBest('best-ovr',    { val: bOvr.val,    url: bOvr.url,    date: bOvr.date });
+    applyBest('best-dist',   { val: bDist.val,   url: bDist.url,   date: bDist.date });
+    applyBest('best-effort', { val: bEff.val,    url: bEff.url,    date: bEff.date });
+    applyBest('best-spd',    { val: bSpd.val,    url: bSpd.url,    date: bSpd.date });
+    applyBest('best-active', { val: bActStr, url: bActive.url, date: bActive.date });
+  }
+
+  /* ── Overview tiles ── */
+  function updateOverview(d) {
+    set('ov-sessions',      d.sessions);
+    set('ov-dist',          d.dist);
+    set('ov-time',          d.time);
+    set('ov-hr',            d.hr);
+    set('ov-best-ovr',      d.best_ovr);
+    set('ov-avg-ovr-sub',   'avg ' + d.avg_ovr);
+    set('ov-best-re',       d.best_re);
+    set('ov-avg-re-sub',    'avg ' + d.avg_re);
+    setHTML('ov-top-arch',  d.top_arch);
+    set('ov-top-arch-sub',  d.top_arch_sub);
+    set('ov-gold',          d.gold);
+    set('ov-silver',        d.silver);
+    set('ov-bronze',        d.bronze);
+    ATTR_FIELDS.forEach(function (f) {
+      var v = d.attrs[f] || 0;
+      setWidth('bar-' + f, v);
+      set('val-' + f, v);
+    });
+    setHTML('arch-computed-icon', d.comp_icon);
+    set('arch-computed-name',     d.comp_name);
+  }
+
+  /* ── Period filter ── */
+  var cards   = document.querySelectorAll('.activity-card');
+  var select  = document.getElementById('period-select');
+  var noRes   = document.getElementById('no-results');
+  var countEl = document.getElementById('grid-count');
+
+  function applyPeriod(period) {
+    var d = period === 'all' ? DATA.all : DATA.months[period];
+    if (d) updateOverview(d);
+
+    var filtered = period === 'all'
+      ? SESSIONS
+      : SESSIONS.filter(function (s) { return s.month === period; });
+
+    renderTrendCharts(filtered);
+    renderBests(filtered);
+
+    var visible = 0;
+    cards.forEach(function (c) {
+      var show = period === 'all' || c.dataset.month === period;
+      c.classList.toggle('hidden', !show);
+      if (show) visible++;
+    });
+
+    if (noRes)   noRes.classList.toggle('visible', visible === 0);
+    if (countEl) countEl.textContent = visible + ' game' + (visible !== 1 ? 's' : '');
+  }
+
+  if (select) {
+    select.addEventListener('change', function () { applyPeriod(select.value); });
+  }
+
+  /* ── Form Indicator (always all-time, newest 5 vs prev 5) ── */
+  function renderFormIndicator() {
+    var dotsEl    = document.getElementById('form-dots');
+    var metricsEl = document.getElementById('form-metrics');
+    if (!dotsEl || !metricsEl) return;
+
+    var sorted = SESSIONS.slice().sort(function (a, b) { return b.date.localeCompare(a.date); });
+    var last5  = sorted.slice(0, 5);
+    var prev5  = sorted.slice(5, 10);
+
+    function avg(arr, key) {
+      if (!arr.length) return null;
+      return arr.reduce(function (s, x) { return s + x[key]; }, 0) / arr.length;
+    }
+
+    /* Dots — last 5, newest left */
+    dotsEl.innerHTML = '';
+    for (var i = 0; i < 5; i++) {
+      var d = document.createElement('a');
+      d.className = 'form-dot';
+      if (i < last5.length) {
+        var s = last5[i];
+        d.className += ' ' + (s.ovr >= 85 ? 'gold' : s.ovr >= 75 ? 'silver' : 'bronze');
+        d.textContent = s.ovr;
+        d.href = s.url;
+        d.title = s.label;
+      } else {
+        d.className += ' empty';
+        d.textContent = '—';
+      }
+      dotsEl.appendChild(d);
+    }
+
+    /* Metrics */
+    var metrics = [
+      { key: 'ovr',    label: 'Avg Rating',   fmt: function (v) { return v.toFixed(1); } },
+      { key: 'dist',   label: 'Avg Distance', fmt: function (v) { return v.toFixed(1) + ' km'; } },
+      { key: 'effort', label: 'Avg Effort',   fmt: function (v) { return Math.round(v); } },
+    ];
+    metricsEl.innerHTML = '';
+    var hasPrev = prev5.length > 0;
+    metrics.forEach(function (m) {
+      var cur  = avg(last5, m.key);
+      var prev = hasPrev ? avg(prev5, m.key) : null;
+      var row  = document.createElement('div');
+      row.className = 'form-row';
+
+      var lbl = document.createElement('span');
+      lbl.className = 'form-lbl';
+      lbl.textContent = m.label;
+
+      var val = document.createElement('span');
+      val.className = 'form-cur';
+      val.textContent = cur !== null ? m.fmt(cur) : '—';
+
+      var delta = document.createElement('span');
+      delta.className = 'form-delta';
+      if (prev !== null && cur !== null) {
+        var diff = cur - prev;
+        var sign = diff > 0.05 ? '↑ +' : diff < -0.05 ? '↓ ' : '→ ';
+        delta.className += diff > 0.05 ? ' up' : diff < -0.05 ? ' down' : ' flat';
+        delta.textContent = sign + m.fmt(Math.abs(diff));
+      } else {
+        delta.className += ' flat';
+        delta.textContent = hasPrev ? '—' : 'no prev';
+      }
+
+      row.appendChild(lbl);
+      row.appendChild(val);
+      row.appendChild(delta);
+      metricsEl.appendChild(row);
+    });
+  }
+
+  /* ── Activity Calendar (weekly cells, one row per year) ── */
+  function renderCalendar() {
+    var gridEl = document.getElementById('cal-grid');
+    if (!gridEl || !SESSIONS.length) return;
+
+    /* UTC-safe date helpers */
+    function parseUTC(dateStr) {
+      var p = dateStr.split('-');
+      return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
+    }
+    function toISO(d) {
+      return d.getUTCFullYear() + '-' +
+        String(d.getUTCMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getUTCDate()).padStart(2, '0');
+    }
+    function weekStart(dateStr) {
+      var d = parseUTC(dateStr);
+      var day = d.getUTCDay();
+      d.setUTCDate(d.getUTCDate() + (day === 0 ? -6 : 1 - day));
+      return toISO(d);
+    }
+    function addWeeks(dateStr, n) {
+      var d = parseUTC(dateStr);
+      d.setUTCDate(d.getUTCDate() + 7 * n);
+      return toISO(d);
+    }
+    function monthAbbr(dateStr) {
+      return parseUTC(dateStr).toLocaleString('default', { month: 'short', timeZone: 'UTC' });
+    }
+
+    /* week → sessions map */
+    var weekMap = {};
+    SESSIONS.forEach(function (s) {
+      var w = weekStart(s.date);
+      if (!weekMap[w]) weekMap[w] = [];
+      weekMap[w].push(s);
+    });
+
+    /* full week range: first session week → this week */
+    var now   = new Date();
+    var today = now.getUTCFullYear() + '-' +
+      String(now.getUTCMonth() + 1).padStart(2, '0') + '-' +
+      String(now.getUTCDate()).padStart(2, '0');
+    var first = Object.keys(weekMap).sort()[0];
+    var last  = weekStart(today);
+
+    var allWeeks = [];
+    var cur = first;
+    while (cur <= last) { allWeeks.push(cur); cur = addWeeks(cur, 1); }
+
+    /* group weeks by year */
+    var yearMap = {};
+    var yearOrder = [];
+    allWeeks.forEach(function (w) {
+      var y = w.slice(0, 4);
+      if (!yearMap[y]) { yearMap[y] = []; yearOrder.push(y); }
+      yearMap[y].push(w);
+    });
+
+    var CELL   = 13; /* px */
+    var GAP    = 3;  /* px */
+    var STRIDE = CELL + GAP;
+    var COLORS = { gold: '#c8a84b', silver: '#9e9e9e', bronze: '#cd7f32' };
+
+    gridEl.innerHTML = '';
+
+    yearOrder.forEach(function (year) {
+      var yearWeeks = yearMap[year];
+      var n = yearWeeks.length;
+
+      /* year wrapper row */
+      var yearRow = document.createElement('div');
+      yearRow.className = 'cal-year';
+
+      /* year label */
+      var yearLbl = document.createElement('div');
+      yearLbl.className = 'cal-year-label';
+      yearLbl.textContent = year;
+      yearRow.appendChild(yearLbl);
+
+      /* CSS grid body: row 1 = month labels, row 2 = cells */
+      var body = document.createElement('div');
+      body.className = 'cal-body';
+      body.style.gridTemplateColumns = 'repeat(' + n + ', ' + CELL + 'px)';
+      body.style.gridTemplateRows    = '14px auto';
+      body.style.alignItems          = 'center';
+
+      /* month labels — one per month change, spanning the correct columns */
+      var curMonth = null, spanStart = 1;
+      function flushMonth(endCol) {
+        if (!curMonth || endCol <= spanStart) return;
+        var lbl = document.createElement('div');
+        lbl.className = 'cal-month-lbl';
+        lbl.textContent = monthAbbr(curMonth + '-01');
+        lbl.style.gridRow    = '1';
+        lbl.style.gridColumn = spanStart + ' / ' + endCol;
+        body.appendChild(lbl);
+      }
+      yearWeeks.forEach(function (w, i) {
+        var m = w.slice(0, 7);
+        if (m !== curMonth) {
+          flushMonth(i + 1);
+          curMonth   = m;
+          spanStart  = i + 1;
+        }
+      });
+      flushMonth(n + 1);
+
+      /* cells */
+      yearWeeks.forEach(function (w, i) {
+        var cell = document.createElement('div');
+        cell.className = 'cal-cell';
+        cell.style.gridRow    = '2';
+        cell.style.gridColumn = (i + 1) + '';
+
+        var sessions = weekMap[w];
+        if (sessions && sessions.length) {
+          var bestOvr = Math.max.apply(null, sessions.map(function (s) { return s.ovr; }));
+          var rarity  = bestOvr >= 85 ? 'gold' : bestOvr >= 75 ? 'silver' : 'bronze';
+          cell.style.background = COLORS[rarity];
+          /* scale cell proportionally: each extra game adds 2px */
+          var sz = CELL + (sessions.length - 1) * 2;
+          cell.style.width  = sz + 'px';
+          cell.style.height = sz + 'px';
+          var avgOvr = (sessions.reduce(function (s, x) { return s + x.ovr; }, 0) / sessions.length).toFixed(1);
+          cell.title = 'Wk of ' + w + ' · ' + sessions.length + ' game' +
+            (sessions.length > 1 ? 's' : '') + ' · avg OVR ' + avgOvr;
+        } else {
+          cell.style.background = 'rgba(255,255,255,0.07)';
+          cell.title = 'Wk of ' + w;
+        }
+        body.appendChild(cell);
+      });
+
+      yearRow.appendChild(body);
+      gridEl.appendChild(yearRow);
+    });
+
+    /* ── Streak computation ── */
+    var longestStreak = 0, currentStreak = 0;
+    var run = 0;
+    allWeeks.forEach(function (w) {
+      if (weekMap[w] && weekMap[w].length) {
+        run++;
+        if (run > longestStreak) longestStreak = run;
+      } else {
+        run = 0;
+      }
+    });
+
+    /* Current streak: count back from the last week that had a session */
+    var lastActiveIdx = -1;
+    for (var i = allWeeks.length - 1; i >= 0; i--) {
+      if (weekMap[allWeeks[i]] && weekMap[allWeeks[i]].length) { lastActiveIdx = i; break; }
+    }
+    if (lastActiveIdx >= 0) {
+      for (var j = lastActiveIdx; j >= 0; j--) {
+        if (weekMap[allWeeks[j]] && weekMap[allWeeks[j]].length) currentStreak++;
+        else break;
+      }
+    }
+
+    function streakLabel(n) { return n + ' week' + (n !== 1 ? 's' : ''); }
+    set('cal-current-streak', streakLabel(currentStreak));
+    set('cal-longest-streak', streakLabel(longestStreak));
+  }
+
+  /* Initial render */
+  renderFormIndicator();
+  renderCalendar();
+  renderTrendCharts(SESSIONS);
+  renderBests(SESSIONS);
+
+})();
+</script>
+
+</body>
+</html>
