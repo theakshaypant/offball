@@ -8,6 +8,13 @@ HR_ZONE_MULTIPLIERS = [1, 2, 3, 4, 5]
 
 GARMIN_NS = 'http://www.garmin.com/xmlschemas/TrackPointExtension/v1'
 
+# Stoppage detection — Tier 2: V-shape + convex hull
+STOPPAGE_MAX_DURATION_S     = 120   # max seconds for a single episode (sanity cap)
+STOPPAGE_MIN_EXTENT_M       = 12    # V-shape tip must be at least this far from start (metres)
+STOPPAGE_DISPLACEMENT_RATIO = 0.45  # displacement/distance < this qualifies as out-and-back
+STOPPAGE_HULL_MARGIN_M      = 5     # near-edge: signed distance to hull > -this value (metres)
+STOPPAGE_OUTER_THRESHOLD    = 3     # walk until signed_dist < -N * HULL_MARGIN_M to find V bounds
+
 ARCHETYPES = {
     'Goalkeeper': {
         'pace': 48, 'physical': 55, 'stamina': 85, 'explosiveness': 62, 'work_rate': 65,

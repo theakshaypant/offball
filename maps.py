@@ -24,28 +24,35 @@ def make_map(df):
                 return i
         return len(SPEED_ZONE_BINS) - 2
 
+    df_track = df[df['is_in_play']].copy() if 'is_in_play' in df.columns else df
+
+    def flush_seg(coords, zone):
+        if len(coords) >= 2:
+            folium.PolyLine(
+                coords,
+                color=SPEED_ZONE_COLORS[zone],
+                weight=4,
+                opacity=0.85,
+                tooltip=SPEED_ZONE_LABELS[zone],
+            ).add_to(m)
+
     current_zone = None
     seg_coords = []
-    for lat, lon, spd in zip(df['lat'], df['lon'], df['speed_kmh']):
-        z = zone_idx(spd)
+    prev_idx = None
+    for idx, row in df_track.iterrows():
+        z = zone_idx(row['speed_kmh'])
+        # Break segment at a stoppage gap (non-contiguous index) or zone change
+        gap = prev_idx is not None and idx != prev_idx + 1
+        if gap or (current_zone is not None and z != current_zone):
+            flush_seg(seg_coords, current_zone)
+            seg_coords = [seg_coords[-1]] if seg_coords and not gap else []
+            current_zone = z
         if current_zone is None:
             current_zone = z
-        if z != current_zone:
-            if len(seg_coords) >= 2:
-                folium.PolyLine(
-                    seg_coords,
-                    color=SPEED_ZONE_COLORS[current_zone],
-                    weight=4,
-                    opacity=0.85,
-                    tooltip=SPEED_ZONE_LABELS[current_zone],
-                ).add_to(m)
-            seg_coords = [seg_coords[-1]] if seg_coords else []
-            current_zone = z
-        seg_coords.append([lat, lon])
+        seg_coords.append([row['lat'], row['lon']])
+        prev_idx = idx
 
-    if len(seg_coords) >= 2 and current_zone is not None:
-        folium.PolyLine(seg_coords, color=SPEED_ZONE_COLORS[current_zone],
-                        weight=4, opacity=0.85).add_to(m)
+    flush_seg(seg_coords, current_zone)
 
     # ── LAYER 2: Heatmaps ────────────────────────────────────────────────────
     # Canvas-based overlays rendered above the lines.
@@ -53,7 +60,7 @@ def make_map(df):
     # avoiding competition with the track. New heatmap layers go here.
 
     # Coverage — uniform weight, shows where time was spent
-    coverage_data = [[row['lat'], row['lon'], 1.0] for _, row in df.iterrows()]
+    coverage_data = [[row['lat'], row['lon'], 1.0] for _, row in df_track.iterrows()]
     HeatMap(coverage_data, radius=16, blur=20, max_zoom=20,
             name='Coverage Heatmap', show=False,
             gradient={0.2: '#ffffb2', 0.4: '#fecc5c',
@@ -61,11 +68,11 @@ def make_map(df):
             ).add_to(m)
 
     # Speed — weighted by km/h, shows where you moved fast
-    max_spd = df['speed_kmh'].max()
+    max_spd = df_track['speed_kmh'].max() if len(df_track) > 0 else 0
     if max_spd > 0:
         heat_data = [
             [row['lat'], row['lon'], row['speed_kmh'] / max_spd]
-            for _, row in df.iterrows()
+            for _, row in df_track.iterrows()
             if row['speed_kmh'] > 1.0
         ]
         if heat_data:

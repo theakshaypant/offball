@@ -5,52 +5,224 @@ import pandas as pd
 
 from constants import SPEED_ZONE_BINS, SPEED_ZONE_LABELS, SPEED_ZONE_COLORS
 from constants import HR_ZONE_LABELS, HR_ZONE_COLORS, HR_ZONE_MULTIPLIERS
+from constants import (
+    STOPPAGE_MAX_DURATION_S,
+    STOPPAGE_MIN_EXTENT_M, STOPPAGE_DISPLACEMENT_RATIO,
+    STOPPAGE_HULL_MARGIN_M, STOPPAGE_OUTER_THRESHOLD,
+)
 from utils import fmt_time, fmt_pace
 
 
+def detect_stoppages(df):
+    """
+    Detect ball-retrieval stoppages using V-shape + convex hull spatial analysis.
+
+    A stoppage is detected when the player makes an out-and-back trip to the
+    edge of the session GPS footprint (convex hull boundary). Speed is
+    irrelevant — only the spatial V-shape pattern matters.
+
+    Algorithm:
+    1. Project GPS to local metres and compute the session convex hull.
+    2. Find contiguous near-edge runs (signed distance to hull > -HULL_MARGIN).
+       Each run's peak (closest point to the hull) is the candidate V-shape tip.
+    3. Walk backward from each run's start (and forward from its end) until the
+       player is clearly back inside the hull (signed_dist < -OUTER_THRESHOLD *
+       HULL_MARGIN_M). This bounds the V-shape geometrically with no fixed window.
+    4. If the segment is an out-and-back (low displacement/distance ratio) and
+       the tip is far enough from the start (≥ MIN_EXTENT_M), mark as stoppage.
+
+    Adds 'is_in_play' boolean column (False = out-of-play). Returns modified df.
+    """
+    try:
+        from scipy.spatial import ConvexHull
+    except ImportError:
+        df = df.copy()
+        df['is_in_play'] = True
+        return df
+
+    df = df.copy()
+    df['is_in_play'] = True
+
+    if len(df) < 50:
+        return df
+
+    # Project lat/lon to local metres (equirectangular approximation)
+    mean_lat = df['lat'].mean()
+    m_per_deg_lon = 111320.0 * math.cos(math.radians(mean_lat))
+    x = (df['lon'].values - df['lon'].mean()) * m_per_deg_lon
+    y = (df['lat'].values - df['lat'].mean()) * 111320.0
+    coords_m = np.column_stack([x, y])
+
+    try:
+        hull = ConvexHull(coords_m)
+    except Exception:
+        return df
+
+    # Signed distance to hull boundary for each point.
+    # hull.equations rows: [a, b, c] with a·x + b·y + c ≤ 0 for interior.
+    # Taking max over all faces: ~0 = on boundary, negative = inside hull.
+    signed_dists = (hull.equations[:, :2] @ coords_m.T + hull.equations[:, 2:3]).max(axis=0)
+
+    elapsed   = df['elapsed_s'].values
+    dist_m    = df['dist_m'].values
+    near_edge = signed_dists > -STOPPAGE_HULL_MARGIN_M
+
+    if not near_edge.any():
+        return df
+
+    # Find each contiguous near-edge run independently.
+    # Each run = one candidate episode (centred on the run's peak).
+    transitions = np.diff(near_edge.astype(int), prepend=0, append=0)
+    run_starts  = np.where(transitions ==  1)[0]
+    run_ends    = np.where(transitions == -1)[0]
+
+    marked = np.zeros(len(df), dtype=bool)
+    outer_thresh = -STOPPAGE_OUTER_THRESHOLD * STOPPAGE_HULL_MARGIN_M
+    n = len(df)
+
+    for rs, re in zip(run_starts, run_ends):
+        # Walk backward from the run's start to find where the player was
+        # clearly inside the hull before this near-edge excursion
+        v_start = rs
+        for j in range(rs - 1, max(0, rs - 600), -1):
+            if signed_dists[j] < outer_thresh:
+                v_start = j + 1
+                break
+
+        # Walk forward from the run's end to find where the player returns
+        # clearly inside the hull after this near-edge excursion
+        v_end = re - 1
+        for j in range(re, min(n, re + 600)):
+            if signed_dists[j] < outer_thresh:
+                v_end = j - 1
+                break
+
+        if v_end <= v_start or (v_end - v_start) < 4:
+            continue
+
+        seg_mask = np.zeros(n, dtype=bool)
+        seg_mask[v_start:v_end + 1] = True
+
+        duration = elapsed[v_end] - elapsed[v_start]
+        if duration > STOPPAGE_MAX_DURATION_S:
+            continue
+
+        seg_x = x[seg_mask]
+        seg_y = y[seg_mask]
+
+        # V-shape check: displacement from start to end vs total distance
+        displacement = math.sqrt((seg_x[-1] - seg_x[0])**2 + (seg_y[-1] - seg_y[0])**2)
+        total_dist   = dist_m[seg_mask].sum()
+        if total_dist < 1 or displacement / total_dist > STOPPAGE_DISPLACEMENT_RATIO:
+            continue
+
+        # Minimum extent: the tip must be at least STOPPAGE_MIN_EXTENT_M from start
+        dists_from_start = np.sqrt((seg_x - seg_x[0])**2 + (seg_y - seg_y[0])**2)
+        if dists_from_start.max() < STOPPAGE_MIN_EXTENT_M:
+            continue
+
+        marked[seg_mask] = True
+
+    df.loc[df.index[marked], 'is_in_play'] = False
+    return df
+
+
+def compute_stoppages(df):
+    """Return list of stoppage event dicts from a df with 'is_in_play' column."""
+    if 'is_in_play' not in df.columns:
+        return []
+
+    in_play  = df['is_in_play'].values.astype(int)
+    elapsed  = df['elapsed_s'].values
+    timestamps = df['timestamp'].values
+
+    transitions = np.diff(in_play, prepend=1)  # 1 = assume in-play before session
+    starts = np.where(transitions == -1)[0]
+    ends   = np.where(transitions ==  1)[0]
+
+    if len(starts) > len(ends):
+        ends = np.append(ends, len(df) - 1)
+
+    stoppages = []
+    for i, (s, e) in enumerate(zip(starts, ends)):
+        duration_s = float(elapsed[e] - elapsed[s])
+        stoppages.append({
+            'index':             i + 1,
+            'start_elapsed_min': round(float(elapsed[s]) / 60, 1),
+            'duration_s':        round(duration_s),
+            'duration_fmt':      fmt_time(duration_s),
+        })
+
+    return stoppages
+
+
 def compute_summary(df, gpx, max_hr):
-    dt = df['elapsed_s'].diff().fillna(1.0).clip(lower=0.1)
-    moving_mask = df['speed_kmh'] >= 1.5
-
-    total_dist_km  = df['cum_dist_m'].iloc[-1] / 1000
     elapsed_time_s = df['elapsed_s'].iloc[-1]
-    moving_time_s  = dt[moving_mask].sum()
-    avg_speed_kmh  = total_dist_km / (moving_time_s / 3600) if moving_time_s > 0 else 0
-    max_speed_kmh  = df['speed_kmh'].max()
-    avg_pace       = (moving_time_s / 60) / total_dist_km if total_dist_km > 0 else float('nan')
-    best_pace      = df.loc[df['speed_kmh'] > 1.5, 'pace_min_per_km'].min()
 
-    ele_diff    = df['ele'].diff().fillna(0)
+    # Game time = in-play rows only; use full-df dt so boundary rows count correctly
+    dt_all = df['elapsed_s'].diff().fillna(1.0).clip(lower=0.1)
+    if 'is_in_play' in df.columns:
+        game_time_s     = float(dt_all[df['is_in_play']].sum())
+        stoppage_time_s = elapsed_time_s - game_time_s
+        transitions     = df['is_in_play'].astype(int).diff().fillna(0)
+        n_stoppages     = int((transitions == -1).sum())
+        df_play         = df[df['is_in_play']].copy()
+    else:
+        game_time_s     = elapsed_time_s
+        stoppage_time_s = 0.0
+        n_stoppages     = 0
+        df_play         = df
+
+    dt          = df_play['elapsed_s'].diff().fillna(1.0).clip(lower=0.1, upper=5.0)
+    moving_mask = df_play['speed_kmh'] >= 1.5
+
+    # Use dist_m sum (not cum_dist_m) so stoppage distances are excluded
+    total_dist_km = df_play['dist_m'].sum() / 1000
+    moving_time_s = dt[moving_mask].sum()
+    avg_speed_kmh = total_dist_km / (moving_time_s / 3600) if moving_time_s > 0 else 0
+    max_speed_kmh = df_play['speed_kmh'].max() if len(df_play) > 0 else 0.0
+    avg_pace      = (moving_time_s / 60) / total_dist_km if total_dist_km > 0 else float('nan')
+    best_pace     = (df_play.loc[df_play['speed_kmh'] > 1.5, 'pace_min_per_km'].min()
+                     if len(df_play) > 0 else float('nan'))
+
+    ele_diff    = df_play['ele'].diff().fillna(0)
     elev_gain_m = ele_diff[ele_diff > 1.0].sum()
     elev_loss_m = abs(ele_diff[ele_diff < -1.0].sum())
 
-    hr_valid      = df['hr'].dropna()
+    hr_valid      = df_play['hr'].dropna()
     avg_hr        = int(hr_valid.mean()) if len(hr_valid) > 0 else 0
     max_hr_actual = int(hr_valid.max())  if len(hr_valid) > 0 else 0
 
     return {
-        'activity_name':  gpx.tracks[0].name or 'Football Session',
-        'start_time':     df['timestamp'].iloc[0].strftime('%a %d %b %Y · %H:%M UTC'),
-        'total_dist_km':  round(total_dist_km, 2),
-        'elapsed_time_s': elapsed_time_s,
-        'elapsed_time':   fmt_time(elapsed_time_s),
-        'moving_time_s':  moving_time_s,
-        'moving_time':    fmt_time(moving_time_s),
-        'avg_speed_kmh':  round(avg_speed_kmh, 1),
-        'max_speed_kmh':  round(max_speed_kmh, 1),
-        'avg_pace':       fmt_pace(avg_pace),
-        'best_pace':      fmt_pace(best_pace),
-        'elev_gain_m':    round(elev_gain_m, 1),
-        'elev_loss_m':    round(elev_loss_m, 1),
-        'avg_hr':         avg_hr,
-        'max_hr':         max_hr_actual,
-        'max_hr_setting': max_hr,
-        'relative_effort': 0,   # filled in after compute_relative_effort
+        'activity_name':    gpx.tracks[0].name or 'Football Session',
+        'start_time':       df['timestamp'].iloc[0].strftime('%a %d %b %Y · %H:%M UTC'),
+        'total_dist_km':    round(total_dist_km, 2),
+        'elapsed_time_s':   elapsed_time_s,
+        'elapsed_time':     fmt_time(elapsed_time_s),
+        'game_time_s':      game_time_s,
+        'game_time':        fmt_time(game_time_s),
+        'stoppage_time_s':  stoppage_time_s,
+        'stoppage_time':    fmt_time(stoppage_time_s),
+        'n_stoppages':      n_stoppages,
+        'moving_time_s':    moving_time_s,
+        'moving_time':      fmt_time(moving_time_s),
+        'avg_speed_kmh':    round(avg_speed_kmh, 1),
+        'max_speed_kmh':    round(max_speed_kmh, 1),
+        'avg_pace':         fmt_pace(avg_pace),
+        'best_pace':        fmt_pace(best_pace),
+        'elev_gain_m':      round(elev_gain_m, 1),
+        'elev_loss_m':      round(elev_loss_m, 1),
+        'avg_hr':           avg_hr,
+        'max_hr':           max_hr_actual,
+        'max_hr_setting':   max_hr,
+        'relative_effort':  0,   # filled in after compute_relative_effort
     }
 
 
 def compute_speed_zones(df):
-    dt = df['elapsed_s'].diff().fillna(1.0).clip(lower=0.1)
+    if 'is_in_play' in df.columns:
+        df = df[df['is_in_play']].copy()
+    dt = df['elapsed_s'].diff().fillna(1.0).clip(lower=0.1, upper=5.0)
     df = df.copy()
     df['_dt']        = dt
     df['speed_zone'] = pd.cut(df['speed_kmh'], bins=SPEED_ZONE_BINS,
@@ -77,7 +249,9 @@ def compute_speed_zones(df):
 
 
 def detect_sprints(df, threshold_kmh=18.0, min_duration_s=5.0):
-    dt        = df['elapsed_s'].diff().fillna(1.0).clip(lower=0.1)
+    if 'is_in_play' in df.columns:
+        df = df[df['is_in_play']].copy()
+    dt        = df['elapsed_s'].diff().fillna(1.0).clip(lower=0.1, upper=5.0)
     is_sprint = df['speed_kmh'] > threshold_kmh
     block_id  = (is_sprint != is_sprint.shift()).cumsum()
 
@@ -102,7 +276,9 @@ def detect_sprints(df, threshold_kmh=18.0, min_duration_s=5.0):
 
 
 def compute_hr_zones(df, max_hr=190):
-    dt          = df['elapsed_s'].diff().fillna(1.0).clip(lower=0.1)
+    if 'is_in_play' in df.columns:
+        df = df[df['is_in_play']].copy()
+    dt          = df['elapsed_s'].diff().fillna(1.0).clip(lower=0.1, upper=5.0)
     hr_valid    = df['hr'].notna()
     bounds_bpm  = [int(max_hr * p) for p in [0, 0.60, 0.70, 0.80, 0.90, 1.01]]
     total_time  = dt[hr_valid].sum()
@@ -133,9 +309,13 @@ def compute_relative_effort(df, hr_zones_df):
 
 
 def compute_km_splits(df):
-    df = df.copy()
+    if 'is_in_play' in df.columns:
+        df = df[df['is_in_play']].copy()
+        df['cum_dist_m'] = df['dist_m'].cumsum()  # recompute for in-play rows only
+    else:
+        df = df.copy()
     df['km_bucket'] = (df['cum_dist_m'] // 1000).astype(int) + 1
-    dt = df['elapsed_s'].diff().fillna(1.0).clip(lower=0.1)
+    dt = df['elapsed_s'].diff().fillna(1.0).clip(lower=0.1, upper=5.0)
     df['_dt'] = dt
 
     rows = []
@@ -172,6 +352,8 @@ def compute_km_splits(df):
 
 def compute_work_rate(df, window_s=60):
     """Resample + smooth speed and HR for the work rate chart."""
+    if 'is_in_play' in df.columns:
+        df = df[df['is_in_play']].copy()
     df_ts = df.set_index('timestamp')[['speed_kmh', 'hr', 'elapsed_s']].copy()
     df_ts['hr'] = df_ts['hr'].astype(float)
 

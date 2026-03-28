@@ -9,6 +9,7 @@ from data import load_gpx, build_dataframe
 from metrics import (
     compute_summary, compute_speed_zones, detect_sprints,
     compute_hr_zones, compute_relative_effort, compute_km_splits, compute_work_rate,
+    detect_stoppages, compute_stoppages,
 )
 from profile import compute_player_profile
 from charts import (
@@ -47,6 +48,9 @@ def process_one(gpx_path, out_path, args, prefix=''):
     p('  Building time-series data ...')
     df = build_dataframe(gpx, smooth_window=args.smooth_window)
 
+    p('  Detecting out-of-play stoppages ...')
+    df = detect_stoppages(df)
+
     p('  Computing metrics ...')
     summary     = compute_summary(df, gpx, args.max_hr)
     zones_df    = compute_speed_zones(df)
@@ -55,6 +59,7 @@ def process_one(gpx_path, out_path, args, prefix=''):
     summary['relative_effort'] = compute_relative_effort(df, hr_zones_df)
     splits_df   = compute_km_splits(df)
     work_df     = compute_work_rate(df)
+    stoppages   = compute_stoppages(df)
     profile     = compute_player_profile(df, summary, zones_df, sprints_df, max_hr=args.max_hr)
 
     p('  Generating charts ...')
@@ -85,6 +90,7 @@ def process_one(gpx_path, out_path, args, prefix=''):
         map_b64=map_b64,
         generated_at=generated_at,
         speed_zone_colors=dict(zip(SPEED_ZONE_LABELS, SPEED_ZONE_COLORS)),
+        stoppages=stoppages,
     )
     Path(out_path).write_text(output_html, encoding='utf-8')
 

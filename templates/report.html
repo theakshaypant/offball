@@ -358,6 +358,21 @@
     margin-top: 10px;
   }
 
+  /* ── Out-of-play badge ── */
+  .excl-badge {
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    background: rgba(100, 181, 246, 0.08);
+    border: 1px solid rgba(100, 181, 246, 0.2);
+    border-radius: 3px;
+    padding: 2px 7px;
+    margin-left: 10px;
+    font-weight: 500;
+    vertical-align: middle;
+  }
+
   /* ── Sortable tables ── */
   .data-table th[data-sortable] {
     cursor: pointer;
@@ -394,6 +409,17 @@
       <div class="stat-tile">
         <div class="value">{{ summary.elapsed_time }}</div>
         <div class="label">Total Time</div>
+      </div>
+      <div class="stat-tile">
+        <div class="value">{{ summary.game_time }}</div>
+        <div class="label">Game Time</div>
+      </div>
+      <div class="stat-tile" {% if summary.n_stoppages == 0 %}style="opacity:0.4"{% endif %}>
+        <div class="value">{{ summary.n_stoppages }}</div>
+        <div class="label">Out-of-Play Periods</div>
+        {% if summary.n_stoppages > 0 %}
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:3px">{{ summary.stoppage_time }} excluded</div>
+        {% endif %}
       </div>
       <div class="stat-tile">
         <div class="value">{{ summary.avg_speed_kmh }} km/h</div>
@@ -442,7 +468,7 @@
 
 <!-- ══ SPEED ZONES ════════════════════════════════════════════════════════ -->
 <details class="section" open>
-  <summary><h2>Speed Zones</h2></summary>
+  <summary><h2>Speed Zones {% if summary.n_stoppages > 0 %}<span class="excl-badge">out-of-play excluded</span>{% endif %}</h2></summary>
   <div class="section-body">
   <div class="two-col">
     <div>{{ speed_zone_chart }}</div>
@@ -483,7 +509,7 @@
 
 <!-- ══ WORK RATE ══════════════════════════════════════════════════════════ -->
 <details class="section" open>
-  <summary><h2>Work Rate Over Time</h2></summary>
+  <summary><h2>Work Rate Over Time {% if summary.n_stoppages > 0 %}<span class="excl-badge">out-of-play excluded</span>{% endif %}</h2></summary>
   <div class="section-body">
   {{ work_rate_chart }}
   <p class="note">60-second rolling average. Blue = speed · Red = heart rate. Dashed line = Z4 threshold (80% max HR). <span style="color:#9c27b0">■</span> Purple bands = sprint efforts (&gt;{{ sprint_threshold }} km/h).</p>
@@ -492,7 +518,7 @@
 
 <!-- ══ HEART RATE ZONES ═══════════════════════════════════════════════════ -->
 <details class="section" open>
-  <summary><h2>Heart Rate Zones</h2></summary>
+  <summary><h2>Heart Rate Zones {% if summary.n_stoppages > 0 %}<span class="excl-badge">out-of-play excluded</span>{% endif %}</h2></summary>
   <div class="section-body">
   <div class="two-col">
     <div>{{ hr_donut_chart }}</div>
@@ -525,7 +551,7 @@
 
 <!-- ══ KM SPLITS ══════════════════════════════════════════════════════════ -->
 <details class="section" open>
-  <summary><h2>Kilometre Splits</h2></summary>
+  <summary><h2>Kilometre Splits {% if summary.n_stoppages > 0 %}<span class="excl-badge">out-of-play excluded</span>{% endif %}</h2></summary>
   <div class="section-body">
   {{ pace_chart }}
   <table class="data-table" style="margin-top:16px">
@@ -557,7 +583,7 @@
 
 <!-- ══ SPRINT EFFORTS ═════════════════════════════════════════════════════ -->
 <details class="section" open>
-  <summary><h2>Sprint Efforts</h2></summary>
+  <summary><h2>Sprint Efforts {% if summary.n_stoppages > 0 %}<span class="excl-badge">out-of-play excluded</span>{% endif %}</h2></summary>
   <div class="section-body">
   {% if sprints_df %}
   <table class="data-table">
@@ -655,7 +681,7 @@
 
 <!-- ══ RELATIVE EFFORT ════════════════════════════════════════════════════ -->
 <details class="section" open>
-  <summary><h2>Relative Effort</h2></summary>
+  <summary><h2>Relative Effort {% if summary.n_stoppages > 0 %}<span class="excl-badge">out-of-play excluded</span>{% endif %}</h2></summary>
   <div class="section-body">
   <div class="effort-card">
     <div class="effort-score">{{ summary.relative_effort }}</div>
@@ -682,6 +708,37 @@
   </div>
   </div>
 </details>
+
+<!-- ══ STOPPAGES ══════════════════════════════════════════════════════════ -->
+{% if summary.n_stoppages > 0 %}
+<details class="section">
+  <summary><h2>Out-of-Play Periods ({{ summary.n_stoppages }} detected · {{ summary.stoppage_time }} total)</h2></summary>
+  <div class="section-body">
+  <p class="note" style="margin-bottom:16px">
+    Detected via V-shape movement to the edge of the session GPS footprint (convex hull boundary).
+    These periods are excluded from all metrics above.
+  </p>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th data-sortable>At (min)</th>
+        <th data-sortable>Duration</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in stoppages %}
+      <tr>
+        <td>{{ s.index }}</td>
+        <td>{{ s.start_elapsed_min }} min</td>
+        <td>{{ s.duration_fmt }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</details>
+{% endif %}
 
 </div><!-- /container -->
 
