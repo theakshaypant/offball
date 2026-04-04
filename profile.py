@@ -44,12 +44,20 @@ def compute_player_profile(df, summary, zones_df, sprints_df, max_hr=190):
     physical_raw   = np.clip((dist_km - 2) / 8 * 55 + 40, 20, 99)
     physical       = int(min(99, physical_raw + min(8, summary.get('relative_effort', 0) / 35)))
 
-    # Stamina — 1st vs 2nd half speed drop-off
-    half_s         = total_s / 2
-    f_spd          = df.loc[df['elapsed_s'] <= half_s, 'speed_kmh'].mean()
-    s_spd          = df.loc[df['elapsed_s'] >  half_s, 'speed_kmh'].mean()
-    drop_off       = max(0.0, (f_spd - s_spd) / f_spd) if f_spd > 0.1 else 0.0
-    stamina        = int(min(99, np.clip((1 - drop_off * 1.5) * 80 + 15, 20, 95) + min(15, moving_pct * 18)))
+    # Stamina — 1st vs 2nd half fade in speed + running intensity, in-play only
+    df_play_s      = df[df['is_in_play']].copy() if 'is_in_play' in df.columns else df
+    game_s         = summary.get('game_time_s', total_s)
+    half_s         = game_s / 2
+    f_half         = df_play_s[df_play_s['elapsed_s'] <= half_s]
+    s_half         = df_play_s[df_play_s['elapsed_s'] >  half_s]
+    f_spd          = f_half['speed_kmh'].mean() if len(f_half) > 0 else 0.0
+    s_spd          = s_half['speed_kmh'].mean() if len(s_half) > 0 else 0.0
+    speed_drop     = max(0.0, (f_spd - s_spd) / f_spd) if f_spd > 0.1 else 0.0
+    f_run          = (f_half['speed_kmh'] >= 7.0).mean() if len(f_half) > 0 else 0.0
+    s_run          = (s_half['speed_kmh'] >= 7.0).mean() if len(s_half) > 0 else 0.0
+    run_drop       = max(0.0, (f_run - s_run) / f_run) if f_run > 0.01 else 0.0
+    composite_drop = 0.5 * speed_drop + 0.5 * run_drop
+    stamina        = int(max(20, min(99, round(99 - composite_drop * 150))))
 
     # Explosiveness — sprint frequency + speed ratio
     elapsed_min    = total_s / 60
@@ -59,7 +67,7 @@ def compute_player_profile(df, summary, zones_df, sprints_df, max_hr=190):
     explosiveness  = int(min(99, max(20, min(sprints_per_10 / 5, 1) * 50 + min((spd_ratio - 1) / 3, 1) * 40 + 15)))
 
     # Work rate — moving % + active zone %
-    work_rate      = int(min(99, max(20, moving_pct * 72 + active_pct * 2.5 + 5)))
+    work_rate      = int(max(20, min(99, moving_pct * 75 + active_pct * 1.0)))
 
     attrs   = dict(pace=pace, physical=physical, stamina=stamina,
                    explosiveness=explosiveness, work_rate=work_rate)

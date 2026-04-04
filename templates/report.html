@@ -266,12 +266,30 @@
     align-items: center;
     gap: 8px;
   }
+  .attr-key-wrap { position: relative; display: inline-block; }
   .attr-key {
     font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--muted);
+    cursor: default;
   }
+  .attr-key-wrap .tooltip {
+    display: none;
+    position: absolute;
+    left: 0; top: calc(100% + 6px);
+    background: #2a2a44;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 0.75rem;
+    color: var(--text);
+    white-space: nowrap;
+    z-index: 100;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+  .attr-key-wrap:hover .tooltip { display: block; }
   .attr-bar-bg {
     background: rgba(255,255,255,0.08);
     border-radius: 4px;
@@ -639,15 +657,18 @@
 
       <div class="attr-list">
         {% set attr_display = [
-          ('PAC', 'pace',         '#64B5F6'),
-          ('PHY', 'physical',     '#81C784'),
-          ('STA', 'stamina',      '#FFD54F'),
-          ('EXP', 'explosiveness','#FF8A65'),
-          ('WRK', 'work_rate',    '#CE93D8'),
+          ('PAC', 'pace',         '#64B5F6', 'Max speed + time spent at high speed and sprinting'),
+          ('PHY', 'physical',     '#81C784', 'Total distance covered + relative effort score'),
+          ('STA', 'stamina',      '#FFD54F', '2nd-half vs 1st-half fade in speed and running intensity'),
+          ('EXP', 'explosiveness','#FF8A65', 'Sprint frequency per 10 min + peak-to-avg speed ratio'),
+          ('WRK', 'work_rate',    '#CE93D8', 'Time in motion + time spent in active speed zones'),
         ] %}
-        {% for key, field, color in attr_display %}
+        {% for key, field, color, tip in attr_display %}
         <div class="attr-row">
-          <span class="attr-key">{{ key }}</span>
+          <span class="attr-key-wrap">
+            <span class="attr-key">{{ key }}</span>
+            <div class="tooltip">{{ tip }}</div>
+          </span>
           <div class="attr-bar-bg">
             <div class="attr-bar-fill"
                  style="width:{{ profile.attrs[field] }}%;background:{{ color }}"></div>
