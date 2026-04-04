@@ -72,7 +72,7 @@ def compute_player_profile(df, summary, zones_df, sprints_df, max_hr=190):
     attrs   = dict(pace=pace, physical=physical, stamina=stamina,
                    explosiveness=explosiveness, work_rate=work_rate)
     overall = int(round(np.mean(list(attrs.values()))))
-    rarity  = 'gold' if overall >= 85 else 'silver' if overall >= 75 else 'bronze'
+    rarity  = 'gold' if overall >= 80 else 'silver' if overall >= 70 else 'bronze' if overall >= 60 else 'trash'
 
     # Archetype classification
     player_vec      = np.array([attrs[k] for k in ATTR_KEYS], dtype=float)
@@ -133,6 +133,7 @@ def _bucket_stats(bucket):
         'gold_count':             rarity_c.get('gold', 0),
         'silver_count':           rarity_c.get('silver', 0),
         'bronze_count':           rarity_c.get('bronze', 0),
+        'trash_count':            rarity_c.get('trash', 0),
         'avg_attrs':              avg_attrs,
         'archetype_computed':     computed_arch,
         'archetype_computed_icon': computed_icon,

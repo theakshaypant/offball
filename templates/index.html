@@ -78,10 +78,12 @@
   .rarity-item.gold   .rarity-num { color: var(--gold); }
   .rarity-item.silver .rarity-num { color: var(--silver); }
   .rarity-item.bronze .rarity-num { color: var(--bronze); }
+  .rarity-item.trash  .rarity-num { color: #6b3333; }
   .rarity-note { font-size: 0.66rem; color: var(--muted); margin-top: 10px; line-height: 1.5; }
   .rarity-note .g { color: var(--gold); }
   .rarity-note .s { color: var(--silver); }
   .rarity-note .b { color: var(--bronze); }
+  .rarity-note .t { color: #6b3333; }
 
   /* Attribute bars */
   .attr-list { display: flex; flex-direction: column; gap: 8px; }
@@ -159,6 +161,7 @@
   .form-dot.gold   { background: var(--gold);   color: #1a1000; }
   .form-dot.silver { background: var(--silver); color: #111; }
   .form-dot.bronze { background: var(--bronze); color: #1a0a00; }
+  .form-dot.trash  { background: #6b3333;       color: #ffd0d0; }
   .form-dot.empty  { background: var(--border); color: var(--muted); font-size: 0.65rem; }
   .form-metrics { display: flex; flex-direction: column; gap: 8px; }
   .form-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
@@ -197,14 +200,17 @@
   .ovr-block.gold   { background: linear-gradient(145deg, #2a1f00, #1a1500); }
   .ovr-block.silver { background: linear-gradient(145deg, #1a1a1a, #111111); }
   .ovr-block.bronze { background: linear-gradient(145deg, #1f1200, #110a00); }
+  .ovr-block.trash  { background: linear-gradient(145deg, #1a1212, #110a0a); }
   .ovr-number { font-size: 2.4rem; font-weight: 900; line-height: 1; }
   .gold   .ovr-number { color: var(--gold); }
   .silver .ovr-number { color: var(--silver); }
   .bronze .ovr-number { color: var(--bronze); }
+  .trash  .ovr-number { color: #6b3333; }
   .ovr-pos { font-size: 0.78rem; font-weight: 700; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
   .gold   .ovr-pos { color: var(--gold); }
   .silver .ovr-pos { color: var(--silver); }
   .bronze .ovr-pos { color: var(--bronze); }
+  .trash  .ovr-pos { color: #6b3333; }
   .ovr-icon { font-size: 1.2rem; margin-top: 3px; }
 
   .card-meta { flex: 1; padding: 14px 16px; display: flex; flex-direction: column; justify-content: center; gap: 4px; min-width: 0; }
@@ -294,8 +300,9 @@
         <div class="rarity-item gold"><div class="rarity-num" id="ov-gold">{{ overview.gold_count }}</div><div class="rarity-lbl">Gold</div></div>
         <div class="rarity-item silver"><div class="rarity-num" id="ov-silver">{{ overview.silver_count }}</div><div class="rarity-lbl">Silver</div></div>
         <div class="rarity-item bronze"><div class="rarity-num" id="ov-bronze">{{ overview.bronze_count }}</div><div class="rarity-lbl">Bronze</div></div>
+        <div class="rarity-item trash"><div class="rarity-num" id="ov-trash">{{ overview.trash_count }}</div><div class="rarity-lbl">🗑️</div></div>
       </div>
-      <p class="rarity-note">OVR = avg of PAC · PHY · STA · EXP · WRK<br><span class="g">Gold</span> ≥ 85 &nbsp;·&nbsp; <span class="s">Silver</span> ≥ 75 &nbsp;·&nbsp; <span class="b">Bronze</span> &lt; 75</p>
+      <p class="rarity-note">OVR = avg of PAC · PHY · STA · EXP · WRK<br><span class="g">Gold</span> ≥ 80 &nbsp;·&nbsp; <span class="s">Silver</span> ≥ 70 &nbsp;·&nbsp; <span class="b">Bronze</span> ≥ 60 &nbsp;·&nbsp; <span class="t">🗑️</span> &lt; 60</p>
     </div>
 
     <div class="ov-panel">
@@ -524,6 +531,7 @@
       gold:         {{ overview.gold_count }},
       silver:       {{ overview.silver_count }},
       bronze:       {{ overview.bronze_count }},
+      trash:        {{ overview.trash_count }},
       attrs:        {{ overview.avg_attrs | tojson }},
       comp_icon:    '{{ overview.archetype_computed_icon }}',
       comp_name:    '{{ overview.archetype_computed }}',
@@ -546,6 +554,7 @@
     gold:         {{ m.gold_count }},
     silver:       {{ m.silver_count }},
     bronze:       {{ m.bronze_count }},
+    trash:        {{ m.trash_count }},
     attrs:        {{ m.avg_attrs | tojson }},
     comp_icon:    '{{ m.archetype_computed_icon }}',
     comp_name:    '{{ m.archetype_computed }}',
@@ -683,6 +692,7 @@
     set('ov-gold',          d.gold);
     set('ov-silver',        d.silver);
     set('ov-bronze',        d.bronze);
+    set('ov-trash',         d.trash);
     ATTR_FIELDS.forEach(function (f) {
       var v = d.attrs[f] || 0;
       setWidth('bar-' + f, v);
@@ -746,7 +756,7 @@
       d.className = 'form-dot';
       if (i < last5.length) {
         var s = last5[i];
-        d.className += ' ' + (s.ovr >= 85 ? 'gold' : s.ovr >= 75 ? 'silver' : 'bronze');
+        d.className += ' ' + (s.ovr >= 80 ? 'gold' : s.ovr >= 70 ? 'silver' : s.ovr >= 60 ? 'bronze' : 'trash');
         d.textContent = s.ovr;
         d.href = s.url;
         d.title = s.label;
@@ -860,7 +870,7 @@
     var CELL   = 13; /* px */
     var GAP    = 3;  /* px */
     var STRIDE = CELL + GAP;
-    var COLORS = { gold: '#c8a84b', silver: '#9e9e9e', bronze: '#cd7f32' };
+    var COLORS = { gold: '#c8a84b', silver: '#9e9e9e', bronze: '#cd7f32', trash: '#6b3333' };
 
     gridEl.innerHTML = '';
 
@@ -916,7 +926,7 @@
         var sessions = weekMap[w];
         if (sessions && sessions.length) {
           var bestOvr = Math.max.apply(null, sessions.map(function (s) { return s.ovr; }));
-          var rarity  = bestOvr >= 85 ? 'gold' : bestOvr >= 75 ? 'silver' : 'bronze';
+          var rarity  = bestOvr >= 80 ? 'gold' : bestOvr >= 70 ? 'silver' : bestOvr >= 60 ? 'bronze' : 'trash';
           cell.style.background = COLORS[rarity];
           /* scale cell proportionally: each extra game adds 2px */
           var sz = CELL + (sessions.length - 1) * 2;
