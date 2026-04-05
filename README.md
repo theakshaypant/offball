@@ -14,7 +14,7 @@ The index page pulls everything together — session cards, your rating trend ov
 
 Each session gets its own report. The usual stuff is there — distance, time, HR — but the more interesting bits are the speed zone breakdown, the work rate chart that shows your rolling speed and heart rate across the full game (good for spotting exactly when you ran out of gas), per-km splits, a sprint log, and a map with the route coloured by speed zone. You can also toggle on coverage and speed heatmaps to see where you spent most of your time.
 
-There's also a player card. It scores you across five attributes — Pace, Physical, Stamina, Explosiveness, Work Rate — gives you an overall rating and a gold/silver/bronze finish, then matches you to the closest of 15 football archetypes. Some games you're a Box-to-Box Midfielder. Some you're a Sweeper. Depends on the day and honestly the data doesn't lie.
+There's also a player card. It scores you across five attributes — Pace, Physical, Stamina, Explosiveness, Work Rate — gives you an overall rating and a gold/silver/bronze/🗑️ finish, then matches you to the closest of 15 football archetypes. Some games you're a Box-to-Box Midfielder. Some you're a Sweeper. Depends on the day and honestly the data doesn't lie.
 
 ![Session Report](docs/static/indiviual_report.png)
 
@@ -137,10 +137,10 @@ Five attributes get scored from your GPS and HR data:
 
 - **Pace** — max speed, with a nudge up if you actually held it for a while rather than one lucky moment
 - **Physical** — distance covered, weighted by how hard you were working throughout
-- **Stamina** — whether your speed held up in the second half compared to the first
+- **Stamina** — how well your speed and running intensity held up in the second half vs the first, measured on in-play time only (stoppages and halftime don't pollute it). 99 means you ran just as hard at the death as you did in the opening minutes.
 - **Explosiveness** — how often you sprinted and how big the gap was between your top speed and your average when moving
-- **Work Rate** — time spent in the active speed zones
+- **Work Rate** — how much of the session you were moving, weighted by the intensity of that movement
 
-85+ overall is gold, 75+ is silver, below that is bronze.
+80+ overall is gold, 70+ is silver, 60+ is bronze, below that is 🗑️.
 
 Archetype matching just finds which of the 15 profiles your numbers sit closest to. No black box, just distance in five-dimensional space.
