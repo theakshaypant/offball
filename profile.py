@@ -4,7 +4,7 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
-from constants import ARCHETYPES
+from constants import ARCHETYPES, REF_GAME_TIME_MIN, MIN_GAME_TIME_MIN, MAX_PROJECTION_MULTIPLIER
 
 ATTR_KEYS = ['pace', 'physical', 'stamina', 'explosiveness', 'work_rate']
 
@@ -40,13 +40,21 @@ def compute_player_profile(df, summary, zones_df, sprints_df, max_hr=190):
     pace_raw       = np.clip((max_spd - 10) / 28 * 79 + 20, 20, 99)
     pace           = int(min(99, pace_raw + min(12, (hsr_pct + sprint_pct) * 1.5)))
 
-    # Physical — distance covered + relative effort bonus
-    physical_raw   = np.clip((dist_km - 2) / 8 * 55 + 40, 20, 99)
+    # Game time for normalization (in-play only, excludes stoppages)
+    game_s         = summary.get('game_time_s', total_s)
+    game_min       = game_s / 60
+
+    # Physical — distance projected to reference game length + relative effort bonus
+    if game_min >= MIN_GAME_TIME_MIN:
+        projection     = min(REF_GAME_TIME_MIN / game_min, MAX_PROJECTION_MULTIPLIER)
+        normalized_km  = dist_km * projection
+    else:
+        normalized_km  = dist_km
+    physical_raw   = np.clip((normalized_km - 2) / 8 * 55 + 40, 20, 99)
     physical       = int(min(99, physical_raw + min(8, summary.get('relative_effort', 0) / 35)))
 
     # Stamina — 1st vs 2nd half fade in speed + running intensity, in-play only
     df_play_s      = df[df['is_in_play']].copy() if 'is_in_play' in df.columns else df
-    game_s         = summary.get('game_time_s', total_s)
     half_s         = game_s / 2
     f_half         = df_play_s[df_play_s['elapsed_s'] <= half_s]
     s_half         = df_play_s[df_play_s['elapsed_s'] >  half_s]
@@ -59,9 +67,8 @@ def compute_player_profile(df, summary, zones_df, sprints_df, max_hr=190):
     composite_drop = 0.5 * speed_drop + 0.5 * run_drop
     stamina        = int(max(20, min(99, round(99 - composite_drop * 150))))
 
-    # Explosiveness — sprint frequency + speed ratio
-    elapsed_min    = total_s / 60
-    sprints_per_10 = len(sprints_df) / elapsed_min * 10 if elapsed_min > 0 else 0
+    # Explosiveness — sprint frequency (per game time) + speed ratio
+    sprints_per_10 = len(sprints_df) / game_min * 10 if game_min > 0 else 0
     avg_moving_spd = df.loc[df['speed_kmh'] > 1.5, 'speed_kmh'].mean()
     spd_ratio      = (max_spd / avg_moving_spd) if pd.notna(avg_moving_spd) and avg_moving_spd > 0 else 1.0
     explosiveness  = int(min(99, max(20, min(sprints_per_10 / 5, 1) * 50 + min((spd_ratio - 1) / 3, 1) * 40 + 15)))

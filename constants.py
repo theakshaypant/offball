@@ -15,6 +15,11 @@ STOPPAGE_DISPLACEMENT_RATIO = 0.45  # displacement/distance < this qualifies as 
 STOPPAGE_HULL_MARGIN_M      = 5     # near-edge: signed distance to hull > -this value (metres)
 STOPPAGE_OUTER_THRESHOLD    = 3     # walk until signed_dist < -N * HULL_MARGIN_M to find V bounds
 
+# Attribute normalization — project distance to a reference game length
+REF_GAME_TIME_MIN           = 80    # standard game length in minutes
+MIN_GAME_TIME_MIN           = 20    # below this, don't project (too short)
+MAX_PROJECTION_MULTIPLIER   = 1.5   # cap to avoid over-extrapolation
+
 ARCHETYPES = {
     'Goalkeeper': {
         'pace': 48, 'physical': 55, 'stamina': 85, 'explosiveness': 62, 'work_rate': 65,
